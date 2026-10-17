@@ -506,7 +506,7 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
     $("btn-admin").textContent = state.admin ? "관리자 모드 끄기" : "관리자 모드";
     render();
   }
-  function setAdmin(on){ state.admin=on; try{ on?sessionStorage.setItem("adm","1"):sessionStorage.removeItem("adm"); }catch(_){} applyAdmin(); }
+  function setAdmin(on){ state.admin=on; applyAdmin(); }
   $("btn-admin").addEventListener("click",()=>{
     if(state.admin){ setAdmin(false); toast("관리자 모드를 껐습니다."); return; }
     $("in-pw").value=""; $("pw-err").hidden=true; openDlg("dlg-admin"); $("in-pw").focus();
@@ -728,9 +728,7 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
   }
   function enter(code, info){
     KEY=info.key; CODE=code; state.since=info.since||0;
-    try{ sessionStorage.setItem("sc",code); }catch(_){}
     $("gate").hidden=true; $("app").hidden=false; $("cur-code").textContent=code;
-    try{ state.admin = sessionStorage.getItem("adm")==="1"; }catch(_){ state.admin=false; }
     subscribe(); render();
   }
   function kicked(){
@@ -823,7 +821,8 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
       await copySpace("s/"+oldKey+"/", "s/"+newKey+"/", true).catch(()=>{});
       try{ await db.doc("s/"+oldKey+"/cfg/school").delete(); }catch(_){}
       closeDlg("dlg-code"); $("code-ed").hidden=true;
-      enter(nc, {key:newKey, since});
+      const wasAdmin=state.admin;
+      enter(nc, {key:newKey, since}); if(wasAdmin){ state.admin=true; applyAdmin(); }
       toast(`학교코드를 ${nc}(으)로 바꿨습니다. 참석자에게 새 코드를 알려 주세요.`);
     }catch(e){
       writeErr(e);
@@ -850,9 +849,8 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
     if(u){ state.canEdit=await u.canEdit(); state.canWrite=await u.can("data.write"); }
     if(!downloads) $("btn-pdf").hidden=true;
     if(!db){ $("code-err").textContent="서명 저장소에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 새로고침해 주세요."; $("code-err").hidden=false; return; }
-    // 같은 탭에서 이미 코드를 입력했으면 바로 입장
-    let saved=null; try{ saved=sessionStorage.getItem("sc"); }catch(_){}
-    if(saved){ try{ const info=await checkCode(saved); if(info){ enter(saved, info); return; } }catch(_){} }
+    // 페이지를 열 때마다 항상 학교코드를 입력해야 들어갈 수 있음
+    try{ sessionStorage.removeItem("sc"); sessionStorage.removeItem("adm"); }catch(_){}
     showGate();
   })();
 })();
