@@ -1,0 +1,861 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>교직원 연수 등록부</title>
+<meta name="description" content="교직원 연수 참석자의 서명을 받고 PDF로 저장합니다.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Nanum+Myeongjo:wght@700;800&display=swap">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+/* Layout: one narrow column like a printed 서명부 — header, meeting box, roster table, actions. */
+:root{
+  --bg:#f3f5f8; --surface:#ffffff; --line:#d9dee6; --line-strong:#b9c1cd;
+  --ink:#17202b; --muted:#5b6675; --accent:#24477f; --accent-ink:#ffffff; --accent-soft:#e6ecf6;
+  --absent:#8a5a12; --absent-soft:#fbf1df; --danger:#b3261e; --danger-soft:#fbe9e7; --ok:#1f6b45;
+  --paper:#ffffff;
+  --f-display:"Nanum Myeongjo","Batang",serif;
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --r:8px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12161c; --surface:#1a2029; --line:#2b3340; --line-strong:#3d4757;
+  --ink:#e7ebf1; --muted:#9aa5b4; --accent:#8fb0ea; --accent-ink:#0f1726; --accent-soft:#1f2c42;
+  --absent:#e6b766; --absent-soft:#2e2615; --danger:#f2a097; --danger-soft:#3a1f1c; --ok:#7fd1a5;
+  --paper:#f7f8fa; color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#12161c; --surface:#1a2029; --line:#2b3340; --line-strong:#3d4757;
+  --ink:#e7ebf1; --muted:#9aa5b4; --accent:#8fb0ea; --accent-ink:#0f1726; --accent-soft:#1f2c42;
+  --absent:#e6b766; --absent-soft:#2e2615; --danger:#f2a097; --danger-soft:#3a1f1c; --ok:#7fd1a5;
+  --paper:#f7f8fa; color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;padding:0 16px;}
+.wrap{max-width:760px;margin:0 auto;padding-block:36px 64px;display:flex;flex-direction:column;gap:22px}
+h1{font-family:var(--f-display);font-weight:800;font-size:clamp(28px,6vw,36px);letter-spacing:-.01em;margin:0;text-wrap:balance}
+.lede{margin:6px 0 0;color:var(--muted)}
+.progress{display:flex;align-items:center;gap:12px;margin-top:14px}
+.progress b{font-variant-numeric:tabular-nums;font-weight:600}
+.bar{flex:1;height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px}
+.info{display:grid;grid-template-columns:auto 1fr;gap:6px 20px;margin:0}
+.info dt{font-weight:600;color:var(--muted);font-size:13px;letter-spacing:.04em;padding-top:2px}
+.info dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.info dd.empty{color:var(--muted)}
+.meta-form{display:grid;grid-template-columns:1fr 180px auto;gap:10px;align-items:end;margin-top:16px;padding-top:16px;border-top:1px dashed var(--line)}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0}
+input[type=text],input[type=date],input[type=password],textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;padding:8px 10px;width:100%}
+textarea{resize:vertical;min-height:90px}
+input:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);padding:8px 14px;font-weight:500;white-space:nowrap}
+button:hover:not(:disabled){border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.danger{background:var(--danger);color:var(--surface);border-color:var(--danger)}
+button.ghost{border-color:transparent;background:transparent;color:var(--muted);padding:4px 8px;font-size:13px}
+button.ghost:hover{color:var(--accent)}
+button.ghost.del{color:var(--danger)}
+button.ghost.del:hover{color:var(--danger);background:var(--danger-soft)}
+button.sm{padding:6px 12px;font-size:14px}
+.tablebox{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:480px}
+th,td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.04em;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td.dept{color:var(--muted);width:28%}
+td.name{font-weight:600;width:22%}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.signed{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sigimg{background:var(--paper);border:1px solid var(--line);border-radius:4px;height:52px;width:150px;object-fit:contain;padding:2px}
+.stamp{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:2px 10px;border-radius:999px}
+.pill.ok{color:var(--ok);background:var(--accent-soft)}
+.pill.absent{color:var(--absent);background:var(--absent-soft)}
+.reason{font-size:14px;overflow-wrap:anywhere}
+.emptyrow td{color:var(--muted);text-align:center;padding:36px 16px}
+.note{color:var(--muted);font-size:13px;margin:0}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;align-items:center}
+.toolbar .grp{display:flex;gap:8px;flex-wrap:wrap}
+.roster-ed{display:flex;flex-direction:column;gap:10px}
+.preview{display:flex;flex-direction:column;gap:6px;font-size:14px}
+.preview .ph{color:var(--muted);font-size:13px}
+.preview .grp-row{display:grid;grid-template-columns:minmax(80px,auto) 1fr;gap:4px 12px;padding:8px 12px;background:var(--bg);border-radius:6px}
+.preview .grp-row b{font-weight:600}
+.preview .grp-row b small{font-weight:400;color:var(--muted);margin-left:4px}
+.preview .grp-row span{min-width:0;overflow-wrap:anywhere}
+td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background:var(--surface)}
+.roster-ed .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+/* modal */
+.scrim{position:fixed;inset:0;background:rgba(10,14,20,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+.modal{background:var(--surface);color:var(--ink);border-radius:12px;width:100%;max-width:520px;padding:22px;display:flex;flex-direction:column;gap:14px;max-height:calc(100% - 32px);overflow:auto}
+.modal h2{margin:0;font-size:19px;font-weight:600}
+.modal .who{color:var(--muted);font-size:14px;margin:-8px 0 0}
+.modal p{margin:0;color:var(--muted)}
+.mrow{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.mrow .spacer{flex:1}
+.pad{position:relative;background:var(--paper);border:1px solid var(--line-strong);border-radius:8px;aspect-ratio:5/2;max-width:100%;touch-action:none}
+.pad canvas{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
+.pad .base{position:absolute;left:8%;right:8%;bottom:24%;border-bottom:1px dashed #b9c1cd;pointer-events:none}
+.pad .hint{position:absolute;left:8%;bottom:calc(24% + 6px);font-size:12px;color:#8892a0;pointer-events:none}
+.chk{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
+.chk input{width:18px;height:18px;accent-color:var(--accent)}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:8px;font-size:14px;z-index:30;max-width:calc(100% - 32px)}
+.status{font-size:14px;color:var(--danger);background:var(--danger-soft);padding:10px 14px;border-radius:6px}
+@media (max-width:560px){
+  .meta-form{grid-template-columns:1fr}
+  .wrap{padding-block:24px 48px}
+  th,td{padding:10px 12px}
+}
+/* 학교코드 입장 화면 */
+.gate{position:fixed;inset:0;z-index:40;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto}
+.gate-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:30px 24px;width:100%;max-width:400px;display:flex;flex-direction:column;gap:14px;text-align:center}
+.gate-eyebrow{font-size:13px;font-weight:600;color:var(--accent);letter-spacing:.06em;margin:0}
+.gate-card h2{font-family:var(--f-display);font-weight:800;font-size:26px;margin:0;text-wrap:balance}
+.gate-card p{margin:0;color:var(--muted)}
+.code-input{font-size:28px!important;letter-spacing:.5em;text-align:center;font-variant-numeric:tabular-nums;padding:12px 10px 12px calc(10px + .5em)!important}
+.code-ed{display:flex;flex-direction:column;gap:12px}
+.code-ed .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.code-now{font-size:22px;letter-spacing:.2em;font-variant-numeric:tabular-nums;color:var(--ink)}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+<div class="gate" id="gate">
+  <form class="gate-card" id="gate-form" autocomplete="off">
+    <p class="gate-eyebrow">개인정보 보호</p>
+    <h2>교직원 연수 등록부</h2>
+    <p id="gate-msg">학교코드 5자리를 입력해 주세요.<br>코드는 연수 담당 선생님께 받을 수 있습니다.</p>
+    <input type="text" id="in-code" class="code-input" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="•••••" aria-label="학교코드 5자리">
+    <p id="code-err" class="status" hidden>학교코드가 맞지 않습니다. 담당 선생님께 확인해 주세요.</p>
+    <button type="submit" class="primary" id="btn-code">들어가기</button>
+  </form>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <header>
+    <h1>교직원 연수 등록부</h1>
+    <p class="lede">본인 이름을 확인해 서명해 주세요. 서명을 잘못 제출했다면 다시 할 수 있습니다.</p>
+    <div class="progress" id="progress" hidden><b id="count">0 / 0명 제출</b><div class="bar" aria-hidden="true"><i id="barfill"></i></div></div>
+  </header>
+
+  <div id="cfgwarn" class="status" hidden>Firebase 설정이 아직 비어 있어 이 기기에만 저장됩니다. 파일 안의 FIREBASE_CONFIG 값을 채워 주세요.</div>
+  <div id="dbstatus" class="status" hidden>서명 저장소에 연결하지 못했습니다. 인터넷 연결과 Firebase 설정을 확인한 뒤 새로고침해 주세요.</div>
+
+  <section class="box" aria-label="연수 정보">
+    <dl class="info">
+      <dt>연수명</dt><dd id="m-title" class="empty">아직 입력되지 않았습니다</dd>
+      <dt>연수 날짜</dt><dd id="m-date" class="empty">아직 입력되지 않았습니다</dd>
+    </dl>
+    <form id="meta-form" class="meta-form" hidden>
+      <label class="f" for="in-title">연수명<input type="text" id="in-title" maxlength="120" placeholder="예: 2026 하반기 교원 역량강화 연수"></label>
+      <label class="f" for="in-date">연수 날짜<input type="date" id="in-date"></label>
+      <button type="submit" class="primary" id="btn-meta">연수 정보 저장</button>
+    </form>
+  </section>
+
+  <div class="tablebox">
+    <table>
+      <thead><tr><th scope="col">부서</th><th scope="col">성명</th><th scope="col">제출 내용</th></tr></thead>
+      <tbody id="rows"><tr class="emptyrow"><td colspan="3">명단을 불러오는 중입니다…</td></tr></tbody>
+    </table>
+  </div>
+
+  <p class="note">제출한 서명은 공유 저장됩니다. 본인 이름을 정확히 확인해 주세요. 불참 시 사유를 남길 수 있습니다.</p>
+
+  <div class="toolbar">
+    <div class="grp" id="admin-tools" hidden>
+      <button type="button" id="btn-pdf" class="primary">PDF로 저장</button>
+      <button type="button" id="btn-roster">명단 편집</button>
+      <button type="button" id="btn-clear">제출 내역 모두 지우기</button>
+      <button type="button" id="btn-code-open">학교코드 변경</button>
+    </div>
+    <div class="grp" style="margin-left:auto">
+      <button type="button" id="btn-admin" class="ghost">관리자 모드</button>
+    </div>
+  </div>
+
+  <section class="box roster-ed" id="roster-ed" hidden aria-label="명단 편집">
+    <label class="f" for="in-roster">한 줄에 <b>부서: 이름 이름 이름</b> 형식으로 부서 사람들을 한꺼번에 적으세요. 이름은 띄어쓰기나 쉼표로 구분합니다. 엑셀에서 부서·성명 두 칸을 복사해 붙여 넣어도 됩니다. 이미 제출한 사람의 서명은 이름이 같으면 유지됩니다.
+      <textarea id="in-roster" rows="8" placeholder="기획팀: 김민준 이서연 박지호&#10;재무팀: 최유진, 정하은&#10;인사팀: 강도윤 윤서아 임지우 한시우"></textarea>
+    </label>
+    <div class="preview" id="roster-preview" aria-live="polite"></div>
+    <div class="row">
+      <button type="button" id="btn-roster-cancel">취소</button>
+      <button type="button" class="primary" id="btn-roster-save">명단 저장</button>
+    </div>
+  </section>
+
+  <section class="box code-ed" id="code-ed" hidden aria-label="학교코드 변경">
+    <div class="f">현재 학교코드 <b id="cur-code" class="code-now"></b></div>
+    <label class="f" for="in-newcode">새 학교코드 (숫자 5자리)<input type="text" id="in-newcode" class="code-input" inputmode="numeric" pattern="[0-9]*" maxlength="5" autocomplete="off" placeholder="•••••"></label>
+    <p class="note">바꾸면 지금 접속해 있는 사람은 새 코드를 다시 입력해야 합니다. 명단, 서명, 연수 정보는 그대로 옮겨집니다.</p>
+    <div class="row">
+      <button type="button" id="btn-code-cancel">취소</button>
+      <button type="button" class="primary" id="btn-code-save">학교코드 변경</button>
+    </div>
+  </section>
+</div>
+
+<!-- 서명 -->
+<div class="scrim" id="dlg-sign" hidden role="dialog" aria-modal="true" aria-labelledby="sign-h">
+  <div class="modal">
+    <h2 id="sign-h">서명하기</h2>
+    <p class="who" id="sign-who"></p>
+    <p>손가락이나 마우스로 아래 칸에 서명해 주세요.</p>
+    <div class="pad" id="pad"><div class="base"></div><span class="hint">서명</span><canvas id="sigcanvas"></canvas></div>
+    <label class="chk" for="consent"><input type="checkbox" id="consent"> 개인정보 수집 및 이용에 동의합니다</label>
+    <div class="mrow">
+      <button type="button" class="ghost" id="btn-sig-clear">다시 쓰기</button>
+      <span class="spacer"></span>
+      <button type="button" id="btn-sig-cancel">취소</button>
+      <button type="button" class="primary" id="btn-sig-submit" disabled>서명 제출하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 불참 -->
+<div class="scrim" id="dlg-absent" hidden role="dialog" aria-modal="true" aria-labelledby="absent-h">
+  <div class="modal">
+    <h2 id="absent-h">불참 제출</h2>
+    <p class="who" id="absent-who"></p>
+    <p>불참 사유를 입력한 뒤 제출해 주세요.</p>
+    <label class="f" for="in-reason">불참 사유<textarea id="in-reason" maxlength="200" rows="3" placeholder="예: 출장 일정으로 참석이 어렵습니다"></textarea></label>
+    <div class="mrow">
+      <button type="button" id="btn-absent-cancel">취소</button>
+      <button type="button" class="primary" id="btn-absent-submit" disabled>불참 제출</button>
+    </div>
+  </div>
+</div>
+
+<!-- 모두 지우기 -->
+<div class="scrim" id="dlg-clear" hidden role="dialog" aria-modal="true" aria-labelledby="clear-h">
+  <div class="modal">
+    <h2 id="clear-h">제출 내역 모두 지우기</h2>
+    <p>명단의 모든 서명과 불참 내역이 삭제됩니다. 연수명과 날짜는 그대로 유지됩니다.</p>
+    <div class="mrow">
+      <button type="button" id="btn-clear-cancel">취소</button>
+      <button type="button" class="danger" id="btn-clear-ok">모두 지우기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 학교코드 변경 확인 -->
+<div class="scrim" id="dlg-code" hidden role="dialog" aria-modal="true" aria-labelledby="code-h">
+  <div class="modal">
+    <h2 id="code-h">학교코드 변경</h2>
+    <p id="code-msg"></p>
+    <div class="mrow">
+      <button type="button" id="btn-code-no">취소</button>
+      <button type="button" class="primary" id="btn-code-ok">변경</button>
+    </div>
+  </div>
+</div>
+
+<!-- 한 사람 제출 내역 삭제 -->
+<div class="scrim" id="dlg-del" hidden role="dialog" aria-modal="true" aria-labelledby="del-h">
+  <div class="modal">
+    <h2 id="del-h">제출 내역 삭제</h2>
+    <p id="del-msg"></p>
+    <div class="mrow">
+      <button type="button" id="btn-del-cancel">취소</button>
+      <button type="button" class="danger" id="btn-del-ok">삭제</button>
+    </div>
+  </div>
+</div>
+
+<!-- 관리자 모드 -->
+<div class="scrim" id="dlg-admin" hidden role="dialog" aria-modal="true" aria-labelledby="admin-h">
+  <form class="modal" id="admin-form">
+    <h2 id="admin-h">관리자 모드</h2>
+    <p>관리자 비밀번호를 입력하면 명단 편집과 PDF 저장을 쓸 수 있습니다.</p>
+    <label class="f" for="in-pw">비밀번호<input type="password" id="in-pw" autocomplete="off"></label>
+    <p id="pw-err" class="status" hidden>비밀번호가 맞지 않습니다. 다시 입력해 주세요.</p>
+    <div class="mrow">
+      <button type="button" id="btn-admin-cancel">취소</button>
+      <button type="submit" class="primary">확인</button>
+    </div>
+  </form>
+</div>
+
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const state = { meeting:{title:"",date:""}, roster:[], entries:{}, canWrite:null, canEdit:false, admin:false, reopen:new Set(), sigs:{}, since:0 };
+  let db = null, downloads = null, current = null;
+
+  /* ============================================================
+     ▼▼▼ Firebase 설정: 아래 값을 본인 Firebase 프로젝트 값으로 바꾸세요 ▼▼▼
+     (Firebase 콘솔 → 프로젝트 설정 → 내 앱 → SDK 설정 및 구성 → '구성')
+     ============================================================ */
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyA04ZMJEhT0Ve09_trq4MnI9bS_aZdx-BU",
+    authDomain: "school-register-61ffb.firebaseapp.com",
+    projectId: "school-register-61ffb",
+    storageBucket: "school-register-61ffb.firebasestorage.app",
+    messagingSenderId: "386577294788",
+    appId: "1:386577294788:web:da55c920b4b19a7a9ff091"
+  };
+  /* ▲▲▲ 여기까지만 바꾸면 됩니다 ▲▲▲ */
+
+  /* ---------- 단독 HTML 파일용: 이 브라우저에 저장 ---------- */
+  function localDB(){
+    const KEY="meeting-sign-register-v1"; let data={};
+    function load(){ try{ data=JSON.parse(localStorage.getItem(KEY))||{}; }catch(_){ data={}; } }
+    load();
+    const subs=new Set(); const fire=()=>subs.forEach(f=>f());
+    function save(){ try{ localStorage.setItem(KEY,JSON.stringify(data)); }catch(e){ throw {code:"quota_exceeded"}; } fire(); }
+    window.addEventListener("storage",ev=>{ if(ev.key===KEY){ load(); fire(); } });
+    const snap=(id,v)=>({id,exists:v!==undefined,data:()=>v});
+    return {
+      doc(path){ const id=path.split("/").pop(); return {
+        get:async()=>snap(id,data[path]),
+        set:async v=>{ data[path]=JSON.parse(JSON.stringify(v)); save(); },
+        delete:async()=>{ delete data[path]; save(); },
+        onSnapshot(fn){ const f=()=>fn(snap(id,data[path])); subs.add(f); f(); return ()=>subs.delete(f); }
+      }; },
+      collection(c){ const q=()=>{ const docs=Object.keys(data).filter(k=>k.startsWith(c+"/")).map(k=>snap(k.slice(c.length+1),data[k])); return {docs,size:docs.length,empty:!docs.length}; };
+        return { get:async()=>q(), onSnapshot(fn){ const f=()=>fn(q()); subs.add(f); f(); return ()=>subs.delete(f); } }; }
+    };
+  }
+  function localDownloads(){
+    return { save:async({filename,data})=>{
+      const url=URL.createObjectURL(new Blob([data],{type:"application/pdf"}));
+      const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),4000); return {status:"saved"};
+    } };
+  }
+  // crypto.subtle을 못 쓰는 환경용 SHA-256
+  function sha256js(ascii){
+    function r(v,a){return (v>>>a)|(v<<(32-a));}
+    const mp=Math.pow,maxWord=mp(2,32);let result="",words=[],len=ascii.length*8,hash=[],k=[],pc=0,isC={};
+    for(let c=2;pc<64;c++){ if(!isC[c]){ for(let i=0;i<313;i+=c)isC[i]=c; hash[pc]=(mp(c,.5)*maxWord)|0; k[pc++]=(mp(c,1/3)*maxWord)|0; } }
+    hash=hash.slice(0,8); ascii=unescape(encodeURIComponent(ascii)); len=ascii.length*8; ascii+="\x80";
+    while(ascii.length%64-56)ascii+="\x00";
+    for(let i=0;i<ascii.length;i++){ const j=ascii.charCodeAt(i); words[i>>2]|=j<<((3-i)%4)*8; }
+    words[words.length]=((len/maxWord)|0); words[words.length]=len;
+    for(let j=0;j<words.length;){ const w=words.slice(j,j+=16),old=hash.slice(0); hash=hash.slice(0,8);
+      for(let i=0;i<64;i++){ const w15=w[i-15],w2=w[i-2],a=hash[0],e=hash[4];
+        const t1=hash[7]+(r(e,6)^r(e,11)^r(e,25))+((e&hash[5])^((~e)&hash[6]))+k[i]+(w[i]=(i<16)?w[i]:(w[i-16]+(r(w15,7)^r(w15,18)^(w15>>>3))+w[i-7]+(r(w2,17)^r(w2,19)^(w2>>>10)))|0);
+        const t2=(r(a,2)^r(a,13)^r(a,22))+((a&hash[1])^(a&hash[2])^(hash[1]&hash[2]));
+        hash=[(t1+t2)|0].concat(hash); hash[4]=(hash[4]+t1)|0; }
+      for(let i=0;i<8;i++)hash[i]=(hash[i]+old[i])|0; }
+    for(let i=0;i<8;i++)for(let j=3;j+1;j--){ const b=(hash[i]>>(j*8))&255; result+=((b<16)?0:"")+b.toString(16); }
+    return result;
+  }
+  /* ---------- 학교코드: 코드마다 따로 떨어진 저장 공간 s/<코드 해시>/... ---------- */
+  const DEFAULT_CODE = "29293";
+  let KEY = null, CODE = null, unsubs = [];
+  const P = p => "s/" + KEY + "/" + p;
+  const sdb = { doc: p => db.doc(P(p)), collection: p => db.collection(P(p)) };
+
+  /* ---------- helpers ---------- */
+  let toastT;
+  function toast(msg){ const t=$("toast"); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,3200); }
+  function fmtDate(s){
+    if(!s) return "";
+    const d=new Date(s+"T00:00:00"); if(isNaN(d)) return s;
+    return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${"일월화수목금토"[d.getDay()]})`;
+  }
+  function fmtTime(ms){ if(!ms) return ""; const d=new Date(ms); return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; }
+  function newId(){ return "p"+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+  function writeErr(e){
+    if(e && e.code==="invalid_argument"){ state.canWrite=false; render(); toast("제출 권한이 없습니다. 공유한 분께 참여(Contributor) 권한을 요청해 주세요."); }
+    else if(e && e.code==="permission-denied") toast("저장 권한이 없습니다. Firebase 보안 규칙을 확인해 주세요.");
+    else if(e && (e.code==="quota_exceeded"||e.code==="resource-exhausted")) toast("저장 공간이 가득 찼습니다. 관리자에게 알려 주세요.");
+    else toast("저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  }
+  function openDlg(id){ $(id).hidden=false; }
+  function closeDlg(id){ $(id).hidden=true; current=null; }
+
+  /* ---------- render ---------- */
+  function render(){
+    const m=state.meeting;
+    const t=$("m-title"), d=$("m-date");
+    t.textContent = m.title || "아직 입력되지 않았습니다"; t.classList.toggle("empty",!m.title);
+    d.textContent = m.date ? fmtDate(m.date) : "아직 입력되지 않았습니다"; d.classList.toggle("empty",!m.date);
+
+    const total=state.roster.length;
+    const done=state.roster.filter(p=>state.entries[p.id]).length;
+    $("count").textContent=`${done} / ${total}명 제출`;
+    $("barfill").style.width = total ? (done/total*100)+"%" : "0";
+
+    const tb=$("rows"); tb.textContent="";
+    if(!total){
+      const tr=document.createElement("tr"); tr.className="emptyrow";
+      const td=document.createElement("td"); td.colSpan=3;
+      td.textContent = state.admin ?"참석자 명단이 비어 있습니다. 아래 ‘명단 편집’에서 부서와 성명을 추가해 주세요." : "아직 참석자 명단이 없습니다. 연수 담당자가 명단을 올리면 여기에 표시됩니다.";
+      tr.appendChild(td); tb.appendChild(tr); return;
+    }
+    const locked = state.canWrite===false || !db;
+    const R=state.roster;
+    R.forEach((p,idx)=>{
+      const e=state.entries[p.id];
+      const tr=document.createElement("tr");
+      // 같은 부서가 이어지면 부서 칸을 하나로 합칩니다
+      if(idx===0 || R[idx-1].dept!==p.dept){
+        let n=1; while(idx+n<R.length && R[idx+n].dept===p.dept) n++;
+        const td1=document.createElement("td"); td1.className="dept"+(n>1?" grouped":""); td1.textContent=p.dept||"—";
+        if(n>1) td1.rowSpan=n;
+        tr.appendChild(td1);
+      }
+      const td2=document.createElement("td"); td2.className="name"; td2.textContent=p.name;
+      const td3=document.createElement("td");
+      if(e && !state.reopen.has(p.id)){
+        const w=document.createElement("div"); w.className="signed";
+        const pv=privOf(p.id,e);
+        if(state.admin && e.kind==="sign" && pv.sig){
+          const img=document.createElement("img"); img.className="sigimg"; img.alt=p.name+" 서명"; img.src=pv.sig; w.appendChild(img);
+        } else if(state.admin && e.kind==="absent"){
+          const pill=document.createElement("span"); pill.className="pill absent"; pill.textContent="불참";
+          const r=document.createElement("span"); r.className="reason"; r.textContent=pv.reason||""; w.append(pill,r);
+        } else {
+          const pill=document.createElement("span");
+          // 일반 모드에서는 서명·불참 구분 없이 똑같이 표시
+          pill.className = "pill ok";
+          pill.textContent = "✓ 제출완료";
+          w.appendChild(pill);
+        }
+        const st=document.createElement("span"); st.className="stamp"; st.textContent=fmtTime(e.at); w.appendChild(st);
+        if(!locked) w.appendChild(btn("재제출","sm",()=>{ state.reopen.add(p.id); render(); }));
+        if(state.admin && db) w.appendChild(btn("삭제","ghost del",()=>openDel(p,e)));
+        td3.appendChild(w);
+      } else {
+        const w=document.createElement("div"); w.className="acts";
+        const a=btn("서명하기","primary sm",()=>openSign(p)); a.disabled=locked;
+        const b=btn("불참","sm",()=>openAbsent(p)); b.disabled=locked;
+        w.append(a,b);
+        if(e) w.appendChild(btn("취소","ghost",()=>{ state.reopen.delete(p.id); render(); }));
+        td3.appendChild(w);
+      }
+      tr.append(td2,td3); tb.appendChild(tr);
+    });
+  }
+  function btn(label,cls,fn){ const b=document.createElement("button"); b.type="button"; b.className=cls; b.textContent=label; b.addEventListener("click",fn); return b; }
+
+  /* ---------- signature pad ---------- */
+  const cv=$("sigcanvas"); const ctx=cv.getContext("2d");
+  let drawing=false, hasInk=false, last=null;
+  function sizePad(){
+    const r=cv.getBoundingClientRect(); const dpr=window.devicePixelRatio||1;
+    cv.width=Math.round(r.width*dpr); cv.height=Math.round(r.height*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0); ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle="#111827"; ctx.lineWidth=2.6;
+    hasInk=false; updateSignBtn();
+  }
+  function pt(ev){ const r=cv.getBoundingClientRect(); return {x:ev.clientX-r.left,y:ev.clientY-r.top}; }
+  cv.addEventListener("pointerdown",ev=>{ drawing=true; cv.setPointerCapture(ev.pointerId); last=pt(ev); ctx.beginPath(); ctx.arc(last.x,last.y,1.2,0,Math.PI*2); ctx.fillStyle="#111827"; ctx.fill(); hasInk=true; updateSignBtn(); });
+  cv.addEventListener("pointermove",ev=>{ if(!drawing) return; const p=pt(ev); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; });
+  ["pointerup","pointercancel","pointerleave"].forEach(n=>cv.addEventListener(n,()=>{drawing=false;}));
+  function updateSignBtn(){ $("btn-sig-submit").disabled = !(hasInk && $("consent").checked); }
+  $("consent").addEventListener("change",updateSignBtn);
+  $("btn-sig-clear").addEventListener("click",()=>{ ctx.clearRect(0,0,cv.width,cv.height); hasInk=false; updateSignBtn(); });
+
+  function exportSig(){
+    // trim to ink bounds, then scale into 600x200
+    const w=cv.width,h=cv.height,data=ctx.getImageData(0,0,w,h).data;
+    let x0=w,y0=h,x1=0,y1=0;
+    for(let y=0;y<h;y+=2)for(let x=0;x<w;x+=2){ if(data[(y*w+x)*4+3]>10){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; } }
+    const pad=12; x0=Math.max(0,x0-pad); y0=Math.max(0,y0-pad); x1=Math.min(w,x1+pad); y1=Math.min(h,y1+pad);
+    const bw=x1-x0, bh=y1-y0, out=document.createElement("canvas"); out.width=600; out.height=200;
+    const s=Math.min(600/bw,200/bh,1.5); const dw=bw*s, dh=bh*s;
+    out.getContext("2d").drawImage(cv,x0,y0,bw,bh,(600-dw)/2,(200-dh)/2,dw,dh);
+    return out.toDataURL("image/png");
+  }
+
+  function openSign(p){
+    current=p; $("sign-who").textContent=`${p.dept?p.dept+" · ":""}${p.name}`;
+    $("consent").checked=false; openDlg("dlg-sign"); requestAnimationFrame(sizePad);
+  }
+  $("btn-sig-cancel").addEventListener("click",()=>closeDlg("dlg-sign"));
+  $("btn-sig-submit").addEventListener("click",async()=>{
+    if(!current||!db) return; const p=current, b=$("btn-sig-submit"); b.disabled=true;
+    try{ await sdb.doc("sigs/"+p.id).set({sig:exportSig()}); await sdb.doc("entries/"+p.id).set({kind:"sign",at:Date.now(),name:p.name}); state.reopen.delete(p.id); closeDlg("dlg-sign"); render(); toast(`${p.name}님의 서명을 제출했습니다.`); }
+    catch(e){ writeErr(e); b.disabled=false; }
+  });
+
+  function openAbsent(p){ current=p; $("absent-who").textContent=`${p.dept?p.dept+" · ":""}${p.name}`; $("in-reason").value=""; $("btn-absent-submit").disabled=true; openDlg("dlg-absent"); $("in-reason").focus(); }
+  $("in-reason").addEventListener("input",()=>{ $("btn-absent-submit").disabled=!$("in-reason").value.trim(); });
+  $("btn-absent-cancel").addEventListener("click",()=>closeDlg("dlg-absent"));
+  $("btn-absent-submit").addEventListener("click",async()=>{
+    if(!current||!db) return; const p=current, b=$("btn-absent-submit"); b.disabled=true;
+    try{ await sdb.doc("sigs/"+p.id).set({reason:$("in-reason").value.trim()}); await sdb.doc("entries/"+p.id).set({kind:"absent",at:Date.now(),name:p.name}); state.reopen.delete(p.id); closeDlg("dlg-absent"); render(); toast(`${p.name}님의 불참을 제출했습니다.`); }
+    catch(e){ writeErr(e); b.disabled=false; }
+  });
+
+  // re-sign from absent row opens sign dialog; offer switch to absent inside? keep simple.
+  /* ---------- 관리자 모드 ---------- */
+  const PW_HASH="47ef5c2388f3ab3106829faf529e7d94153f43f20a25af8f871370d8db3be352";
+  async function sha256(s){ if(!(window.crypto&&crypto.subtle)) return sha256js(s); const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,"0")).join(""); }
+  // 서명 그림·불참 사유는 관리자 모드에서만 내려받습니다 (참석자 휴대폰에는 제출 여부만 전달)
+  let unsubSigs=null;
+  function privOf(id,e){ return state.sigs[id] || {sig:e&&e.sig, reason:e&&e.reason}; }
+  function applyAdmin(){
+    if(state.admin && db && KEY && !unsubSigs){
+      unsubSigs=sdb.collection("sigs").onSnapshot(s=>{ const m={}; s.docs.forEach(x=>{ m[x.id]=x.data(); }); state.sigs=m; render(); },()=>{});
+    } else if(!state.admin && unsubSigs){ unsubSigs(); unsubSigs=null; state.sigs={}; }
+    $("admin-tools").hidden=!state.admin; $("meta-form").hidden=!state.admin; $("progress").hidden=!state.admin;
+    if(!state.admin){ $("roster-ed").hidden=true; $("code-ed").hidden=true; }
+    $("btn-admin").textContent = state.admin ? "관리자 모드 끄기" : "관리자 모드";
+    render();
+  }
+  function setAdmin(on){ state.admin=on; try{ on?sessionStorage.setItem("adm","1"):sessionStorage.removeItem("adm"); }catch(_){} applyAdmin(); }
+  $("btn-admin").addEventListener("click",()=>{
+    if(state.admin){ setAdmin(false); toast("관리자 모드를 껐습니다."); return; }
+    $("in-pw").value=""; $("pw-err").hidden=true; openDlg("dlg-admin"); $("in-pw").focus();
+  });
+  $("btn-admin-cancel").addEventListener("click",()=>closeDlg("dlg-admin"));
+  $("admin-form").addEventListener("submit",async ev=>{
+    ev.preventDefault();
+    let ok=false; try{ ok = (await sha256($("in-pw").value))===PW_HASH; }catch(_){ ok=false; }
+    if(ok){ closeDlg("dlg-admin"); setAdmin(true); toast("관리자 모드를 켰습니다."); afterAdminOn(); }
+    else { $("pw-err").hidden=false; $("in-pw").select(); }
+  });
+
+  document.addEventListener("keydown",ev=>{ if(ev.key==="Escape"){ ["dlg-sign","dlg-absent","dlg-clear","dlg-admin","dlg-del","dlg-code"].forEach(id=>{ if(!$(id).hidden) closeDlg(id); }); } });
+
+  /* ---------- admin ---------- */
+  $("meta-form").addEventListener("submit",async ev=>{
+    ev.preventDefault(); if(!db) return;
+    const title=$("in-title").value.trim(), date=$("in-date").value;
+    try{ await sdb.doc("cfg/meeting").set({title,date}); toast("연수 정보를 저장했습니다."); }catch(e){ writeErr(e); }
+  });
+  /* 명단 입력 해석
+     - "기획팀: 김민준 이서연, 박지호"  → 콜론 앞이 부서, 뒤는 이름 여러 개
+     - "기획팀:" 한 줄             → 다음 줄들의 이름은 모두 기획팀
+     - "기획팀 김민준 이서연"        → 첫 단어가 부서, 나머지가 이름
+     - 엑셀 붙여넣기 "기획팀[탭]김민준" 도 같은 방식으로 처리 */
+  function parseRoster(text){
+    const out=[]; let header=null;
+    for(const raw of text.split(/\r?\n/)){
+      const l=raw.trim(); if(!l) continue;
+      const splitNames=s=>s.split(/[\s,，·、\/]+/).map(x=>x.trim()).filter(Boolean);
+      const tabs=raw.split(/\t/).map(s=>s.trim()).filter(Boolean);
+      if(raw.includes("\t") && tabs.length>=2){ header=null; splitNames(tabs.slice(1).join(" ")).forEach(n=>out.push({dept:tabs[0],name:n})); continue; }
+      const m=l.match(/^([^:：]+)[:：](.*)$/);
+      if(m){
+        const dept=m[1].trim(), names=splitNames(m[2]);
+        if(!names.length){ header=dept; continue; }
+        header=null; names.forEach(n=>out.push({dept,name:n}));
+      } else if(header){
+        splitNames(l).forEach(n=>out.push({dept:header,name:n}));
+      } else {
+        const t=splitNames(l);
+        if(t.length===1) out.push({dept:"",name:t[0]});
+        else t.slice(1).forEach(n=>out.push({dept:t[0],name:n}));
+      }
+    }
+    // 같은 부서끼리 모이도록 부서가 처음 나온 순서대로 정렬
+    const order=[]; out.forEach(p=>{ if(!order.includes(p.dept)) order.push(p.dept); });
+    return order.flatMap(d=>out.filter(p=>p.dept===d));
+  }
+  function renderPreview(){
+    const box=$("roster-preview"); box.textContent="";
+    const list=parseRoster($("in-roster").value);
+    const ph=document.createElement("div"); ph.className="ph";
+    if(!list.length){ ph.textContent="입력한 명단이 여기에 부서별로 미리 보입니다."; box.appendChild(ph); return; }
+    const depts=[...new Set(list.map(p=>p.dept))];
+    ph.textContent=`미리보기 · ${depts.length}개 부서, 총 ${list.length}명`; box.appendChild(ph);
+    depts.forEach(d=>{
+      const names=list.filter(p=>p.dept===d).map(p=>p.name);
+      const row=document.createElement("div"); row.className="grp-row";
+      const b=document.createElement("b"); b.textContent=d||"부서 없음"; const sm=document.createElement("small"); sm.textContent=names.length+"명"; b.appendChild(sm);
+      const s=document.createElement("span"); s.textContent=names.join(" · ");
+      row.append(b,s); box.appendChild(row);
+    });
+  }
+  $("in-roster").addEventListener("input",renderPreview);
+  $("btn-roster").addEventListener("click",()=>{
+    const depts=[...new Set(state.roster.map(p=>p.dept))];
+    $("in-roster").value=depts.map(d=>{ const names=state.roster.filter(p=>p.dept===d).map(p=>p.name).join(" "); return d?`${d}: ${names}`:names; }).join("\n");
+    $("roster-ed").hidden=false; renderPreview(); $("in-roster").focus();
+  });
+  $("btn-roster-cancel").addEventListener("click",()=>{ $("roster-ed").hidden=true; });
+  $("btn-roster-save").addEventListener("click",async()=>{
+    if(!db) return;
+    const used=new Set();
+    const people=parseRoster($("in-roster").value).map(({dept,name})=>{
+      const ex=state.roster.find(p=>!used.has(p.id)&&p.name===name&&p.dept===dept) || state.roster.find(p=>!used.has(p.id)&&p.name===name);
+      const id=ex?ex.id:newId(); used.add(id);
+      return {id,dept,name};
+    });
+    try{ await sdb.doc("cfg/roster").set({people}); $("roster-ed").hidden=true; toast(`명단 ${people.length}명을 저장했습니다.`); }catch(e){ writeErr(e); }
+  });
+  function openDel(p,e){
+    current=p;
+    $("del-msg").textContent=`${p.dept?p.dept+" ":""}${p.name}님의 ${e.kind==="absent"?"불참 내역":"서명"}을 삭제합니다. 삭제하면 미제출 상태로 돌아가고 되돌릴 수 없습니다.`;
+    openDlg("dlg-del");
+  }
+  $("btn-del-cancel").addEventListener("click",()=>closeDlg("dlg-del"));
+  $("btn-del-ok").addEventListener("click",async()=>{
+    if(!current||!db) return; const p=current, b=$("btn-del-ok"); b.disabled=true;
+    try{ await sdb.doc("entries/"+p.id).delete(); await sdb.doc("sigs/"+p.id).delete(); state.reopen.delete(p.id); closeDlg("dlg-del"); render(); toast(`${p.name}님의 제출 내역을 삭제했습니다.`); }
+    catch(e){ writeErr(e); }
+    b.disabled=false;
+  });
+  $("btn-clear").addEventListener("click",()=>openDlg("dlg-clear"));
+  $("btn-clear-cancel").addEventListener("click",()=>closeDlg("dlg-clear"));
+  $("btn-clear-ok").addEventListener("click",async()=>{
+    if(!db) return; const b=$("btn-clear-ok"); b.disabled=true;
+    try{
+      // 서로 다른 문서이므로 10개씩 묶어 동시에 지웁니다 (100명이어도 몇 초)
+      for(const col of ["entries","sigs"]){
+        const ids=(await sdb.collection(col).get()).docs.map(d=>d.id);
+        for(let i=0;i<ids.length;i+=10) await Promise.all(ids.slice(i,i+10).map(id=>sdb.doc(col+"/"+id).delete()));
+      }
+      closeDlg("dlg-clear"); toast("제출 내역을 모두 지웠습니다.");
+    }catch(e){ writeErr(e); }
+    b.disabled=false;
+  });
+
+  /* ---------- PDF ---------- */
+  function loadImg(src){ return new Promise(res=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>res(null); i.src=src; }); }
+  function fitText(c,txt,maxW){ if(c.measureText(txt).width<=maxW) return txt; while(txt.length>1&&c.measureText(txt+"…").width>maxW) txt=txt.slice(0,-1); return txt+"…"; }
+  async function buildPdf(){
+    const J=window.jspdf&&window.jspdf.jsPDF; if(!J) throw new Error("nolib");
+    try{ await Promise.all([document.fonts.load('600 26px "IBM Plex Sans KR"',"가"),document.fonts.load('800 44px "Nanum Myeongjo"',"가")]); }catch(_){}
+    const W=1240,H=1754,M=90, body='"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif';
+    const rows=state.roster, imgs={};
+    await Promise.all(rows.map(async p=>{ const e=state.entries[p.id]; const sg=privOf(p.id,e).sig; if(e&&e.kind==="sign"&&sg) imgs[p.id]=await loadImg(sg); }));
+    const headH=364, rowH=84, thH=54, footH=70;
+    const firstCap=Math.floor((H-headH-thH-footH-M)/rowH), nextCap=Math.floor((H-M-thH-footH-M)/rowH);
+    const pages=[]; let i=0; pages.push(rows.slice(0,firstCap)); i=firstCap; while(i<rows.length){ pages.push(rows.slice(i,i+nextCap)); i+=nextCap; }
+    const pdf=new J({unit:"mm",format:"a4"});
+    const cols=[{k:"no",w:90,t:"번호"},{k:"dept",w:250,t:"부서"},{k:"name",w:210,t:"성명"},{k:"sig",w:W-2*M-550,t:"서명 / 불참 사유"}];
+    const done=rows.filter(p=>state.entries[p.id]).length, now=new Date();
+    let n=0;
+    pages.forEach((pg,pi)=>{
+      const c=document.createElement("canvas"); c.width=W; c.height=H; const g=c.getContext("2d");
+      g.fillStyle="#fff"; g.fillRect(0,0,W,H); g.fillStyle="#111"; g.textBaseline="middle";
+      let y=M;
+      if(pi===0){
+        g.font='800 50px "Nanum Myeongjo",serif'; g.textAlign="center"; g.fillText("교직원 연수 등록부",W/2,y+30); g.textAlign="left";
+        y+=90; g.strokeStyle="#222"; g.lineWidth=2; g.strokeRect(M,y,W-2*M,120); g.lineWidth=1;
+        g.beginPath(); g.moveTo(M,y+60); g.lineTo(W-M,y+60); g.moveTo(M+170,y); g.lineTo(M+170,y+120); g.stroke();
+        g.fillStyle="#f1f3f6"; g.fillRect(M+1,y+1,168,118); g.fillStyle="#111";
+        g.font=`600 24px ${body}`; g.fillText("연 수 명",M+40,y+30); g.fillText("연수 날짜",M+32,y+90);
+        g.font=`400 24px ${body}`; g.fillText(fitText(g,state.meeting.title||"",W-2*M-210),M+195,y+30); g.fillText(fmtDate(state.meeting.date),M+195,y+90);
+        y+=150; g.font=`400 20px ${body}`; g.fillStyle="#555"; g.textAlign="right"; g.fillText(`제출 ${done} / ${rows.length}명`,W-M,y); g.textAlign="left"; g.fillStyle="#111";
+        y=headH;
+      }
+      // header row
+      g.fillStyle="#e9edf3"; g.fillRect(M,y,W-2*M,thH); g.fillStyle="#111"; g.font=`600 22px ${body}`;
+      let x=M; cols.forEach(cl=>{ g.textAlign="center"; g.fillText(cl.t,x+cl.w/2,y+thH/2); x+=cl.w; }); g.textAlign="left";
+      const top=y; y+=thH;
+      pg.forEach(p=>{
+        n++; const e=state.entries[p.id]; let x=M;
+        g.font=`400 22px ${body}`; g.fillStyle="#111"; g.textAlign="center"; g.fillText(String(n),x+cols[0].w/2,y+rowH/2); x+=cols[0].w;
+        g.fillText(fitText(g,p.dept||"",cols[1].w-24),x+cols[1].w/2,y+rowH/2); x+=cols[1].w;
+        g.font=`600 23px ${body}`; g.fillText(fitText(g,p.name,cols[2].w-24),x+cols[2].w/2,y+rowH/2); x+=cols[2].w; g.textAlign="left";
+        if(e&&e.kind==="sign"&&imgs[p.id]){ const im=imgs[p.id], bw=cols[3].w-40, bh=rowH-14, s=Math.min(bw/im.width,bh/im.height); g.drawImage(im,x+(cols[3].w-im.width*s)/2,y+(rowH-im.height*s)/2,im.width*s,im.height*s); }
+        else if(e&&e.kind==="absent"){ g.font=`600 21px ${body}`; g.fillStyle="#8a5a12"; g.fillText("불참",x+20,y+rowH/2); g.font=`400 20px ${body}`; g.fillStyle="#333"; g.fillText(fitText(g,privOf(p.id,e).reason||"",cols[3].w-100),x+80,y+rowH/2); }
+        y+=rowH; g.strokeStyle="#c9ced6"; g.beginPath(); g.moveTo(M,y); g.lineTo(W-M,y); g.stroke();
+      });
+      g.strokeStyle="#222"; g.lineWidth=2; g.strokeRect(M,top,W-2*M,y-top); g.lineWidth=1; g.strokeStyle="#c9ced6";
+      let cx=M; cols.slice(0,-1).forEach(cl=>{ cx+=cl.w; g.beginPath(); g.moveTo(cx,top); g.lineTo(cx,y); g.stroke(); });
+      g.font=`400 18px ${body}`; g.fillStyle="#666";
+      g.fillText(`출력 ${now.getFullYear()}.${now.getMonth()+1}.${now.getDate()} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`,M,H-M/2-10);
+      g.textAlign="right"; g.fillText(`${pi+1} / ${pages.length}`,W-M,H-M/2-10); g.textAlign="left";
+      if(pi>0) pdf.addPage();
+      pdf.addImage(c.toDataURL("image/jpeg",0.92),"JPEG",0,0,210,297);
+    });
+    return pdf.output("arraybuffer");
+  }
+  $("btn-pdf").addEventListener("click",async()=>{
+    if(!state.roster.length){ toast("명단이 비어 있어 저장할 내용이 없습니다."); return; }
+    if(!downloads){ toast("이 화면에서는 파일 저장을 쓸 수 없습니다."); return; }
+    const b=$("btn-pdf"); b.disabled=true; b.textContent="PDF 만드는 중…";
+    try{
+      const buf=await buildPdf();
+      const name=(state.meeting.title||"교직원연수")+"_연수등록부"+(state.meeting.date?"_"+state.meeting.date:"")+".pdf";
+      await downloads.save({filename:name.replace(/[\\/:*?"<>|]/g,"_"),data:buf});
+      toast("PDF를 저장했습니다.");
+    }catch(e){
+      if(e&&e.code==="declined"){} else if(e&&e.code==="rate_limited") toast("저장 창이 이미 열려 있습니다.");
+      else toast("PDF를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    }
+    b.disabled=false; b.textContent="PDF로 저장";
+  });
+
+  /* ---------- 학교코드 입장 / 구독 ---------- */
+  const keyOf = async code => await sha256("tsr-school-v1:" + code);
+  const clone = o => JSON.parse(JSON.stringify(o||{}));
+  async function inBatches(list, fn){ for(let i=0;i<list.length;i+=10) await Promise.all(list.slice(i,i+10).map(fn)); }
+
+  // 코드가 맞으면 {key, since}, 아니면 null
+  async function checkCode(code){
+    const key = await keyOf(code);
+    const sch = await db.doc("s/"+key+"/cfg/school").get();
+    if(sch.exists) return {key, since: (sch.data()||{}).since||0};
+    if(code===DEFAULT_CODE){
+      const mv = await db.doc("s/"+key+"/cfg/moved").get();
+      if(!mv.exists) return {key, since:0};
+    }
+    return null;
+  }
+  function unsubscribeAll(){
+    unsubs.forEach(u=>{ try{u()}catch(_){} }); unsubs=[];
+    if(unsubSigs){ try{unsubSigs()}catch(_){} unsubSigs=null; }
+  }
+  function subscribe(){
+    unsubscribeAll();
+    state.roster=[]; state.entries={}; state.sigs={}; state.meeting={title:"",date:""}; state.reopen.clear();
+    unsubs.push(sdb.doc("cfg/meeting").onSnapshot(s=>{
+      const v=s.exists?s.data():{}; state.meeting={title:v.title||"",date:v.date||""};
+      if(document.activeElement!==$("in-title")) $("in-title").value=state.meeting.title;
+      if(document.activeElement!==$("in-date")) $("in-date").value=state.meeting.date;
+      render();
+    },()=>{}));
+    unsubs.push(sdb.doc("cfg/roster").onSnapshot(s=>{ const v=s.exists?s.data():{}; state.roster=Array.isArray(v.people)?v.people:[]; render(); },()=>{}));
+    unsubs.push(sdb.collection("entries").onSnapshot(s=>{ const m={}; s.docs.forEach(x=>{ m[x.id]=x.data(); }); state.entries=m; render(); },()=>{ $("dbstatus").hidden=false; }));
+    // 관리자가 학교코드를 바꾸면 예전 공간에 표시가 남음 → 모두 입장 화면으로
+    unsubs.push(sdb.doc("cfg/moved").onSnapshot(s=>{ if(s.exists && ((s.data()||{}).at||0) > state.since) kicked(); },()=>{}));
+    applyAdmin();
+  }
+  const GATE_MSG = "학교코드 5자리를 입력해 주세요.<br>코드는 연수 담당 선생님께 받을 수 있습니다.";
+  function showGate(msg, err){
+    $("app").hidden=true; $("gate").hidden=false;
+    $("gate-msg").innerHTML = msg || GATE_MSG;
+    $("code-err").hidden=!err; if(err) $("code-err").textContent=err;
+    $("in-code").value=""; setTimeout(()=>{ try{$("in-code").focus()}catch(_){} },50);
+  }
+  function enter(code, info){
+    KEY=info.key; CODE=code; state.since=info.since||0;
+    try{ sessionStorage.setItem("sc",code); }catch(_){}
+    $("gate").hidden=true; $("app").hidden=false; $("cur-code").textContent=code;
+    try{ state.admin = sessionStorage.getItem("adm")==="1"; }catch(_){ state.admin=false; }
+    subscribe(); render();
+  }
+  function kicked(){
+    unsubscribeAll(); KEY=null; CODE=null;
+    try{ sessionStorage.removeItem("sc"); sessionStorage.removeItem("adm"); }catch(_){}
+    state.admin=false; applyAdmin();
+    ["dlg-sign","dlg-absent","dlg-clear","dlg-admin","dlg-del","dlg-code"].forEach(id=>{ $(id).hidden=true; });
+    showGate("학교코드가 바뀌었습니다.<br>담당 선생님께 새 코드를 받아 입력해 주세요.");
+  }
+  function digitsOnly(el){ const v=el.value.replace(/\D/g,"").slice(0,5); if(v!==el.value) el.value=v; }
+  $("in-code").addEventListener("input",()=>{ digitsOnly($("in-code")); $("code-err").hidden=true; });
+  $("in-newcode").addEventListener("input",()=>digitsOnly($("in-newcode")));
+  $("gate-form").addEventListener("submit",async ev=>{
+    ev.preventDefault();
+    const code=$("in-code").value.trim(), b=$("btn-code");
+    const err=t=>{ $("code-err").textContent=t; $("code-err").hidden=false; };
+    if(!/^\d{5}$/.test(code)){ err("학교코드는 숫자 5자리입니다."); return; }
+    if(!db){ err("서명 저장소에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 새로고침해 주세요."); return; }
+    b.disabled=true; b.textContent="확인 중…";
+    try{
+      const info=await checkCode(code);
+      if(info) enter(code, info);
+      else { err("학교코드가 맞지 않습니다. 담당 선생님께 확인해 주세요."); $("in-code").select(); }
+    }catch(e){ err("확인하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요."); }
+    b.disabled=false; b.textContent="들어가기";
+  });
+
+  // 관리자 모드를 켠 직후: 학교 표시 문서 만들기 + 예전 버전(코드 없던 때) 데이터 옮기기
+  async function afterAdminOn(){
+    if(!db||!KEY) return;
+    try{
+      const sch=await sdb.doc("cfg/school").get();
+      if(!sch.exists){ const since=Date.now(); await sdb.doc("cfg/school").set({since}); state.since=since; }
+    }catch(_){}
+    try{
+      const cur=await sdb.doc("cfg/roster").get();
+      if(cur.exists && ((cur.data()||{}).people||[]).length) return;
+      const old=await db.doc("cfg/roster").get();
+      if(!old.exists || !((old.data()||{}).people||[]).length) return;
+      await copySpace("", "s/"+KEY+"/", true);
+      toast("이전에 저장된 명단과 서명을 옮겨 왔습니다.");
+    }catch(_){}
+  }
+  // from/to 접두어: "" (예전 위치) 또는 "s/<key>/"
+  async function copySpace(from, to, removeOld){
+    for(const id of ["meeting","roster"]){
+      const s=await db.doc(from+"cfg/"+id).get();
+      if(s.exists) await db.doc(to+"cfg/"+id).set(clone(s.data()));
+    }
+    for(const col of ["entries","sigs"]){
+      const docs=(await db.collection(from+col).get()).docs;
+      await inBatches(docs, d=>db.doc(to+col+"/"+d.id).set(clone(d.data())));
+    }
+    if(!removeOld) return;
+    for(const col of ["entries","sigs"]){
+      const ids=(await db.collection(from+col).get()).docs.map(d=>d.id);
+      await inBatches(ids, id=>db.doc(from+col+"/"+id).delete());
+    }
+    for(const id of ["meeting","roster"]){ try{ await db.doc(from+"cfg/"+id).delete(); }catch(_){} }
+  }
+
+  // 학교코드 변경 (관리자 모드)
+  let pendingCode=null;
+  $("btn-code-open").addEventListener("click",()=>{ $("cur-code").textContent=CODE||""; $("in-newcode").value=""; $("code-ed").hidden=false; $("in-newcode").focus(); });
+  $("btn-code-cancel").addEventListener("click",()=>{ $("code-ed").hidden=true; });
+  $("btn-code-save").addEventListener("click",()=>{
+    const nc=$("in-newcode").value.trim();
+    if(!/^\d{5}$/.test(nc)){ toast("학교코드는 숫자 5자리로 입력해 주세요."); return; }
+    if(nc===CODE){ toast("지금 쓰는 학교코드와 같습니다."); return; }
+    pendingCode=nc;
+    $("code-msg").textContent=`학교코드를 ${nc}(으)로 바꿉니다. 지금 접속해 있는 사람은 새 코드를 다시 입력해야 합니다. 명단, 서명, 연수 정보는 그대로 옮겨집니다.`;
+    openDlg("dlg-code");
+  });
+  $("btn-code-no").addEventListener("click",()=>{ pendingCode=null; closeDlg("dlg-code"); });
+  $("btn-code-ok").addEventListener("click",async()=>{
+    if(!pendingCode||!db||!KEY) return;
+    const nc=pendingCode, b=$("btn-code-ok"); b.disabled=true; b.textContent="옮기는 중…";
+    const oldKey=KEY;
+    try{
+      const newKey=await keyOf(nc);
+      const exist=await db.doc("s/"+newKey+"/cfg/school").get();
+      if(exist.exists){ toast("이미 쓰이고 있는 코드입니다. 다른 번호를 골라 주세요."); b.disabled=false; b.textContent="변경"; return; }
+      unsubscribeAll();
+      const since=Date.now();
+      await db.doc("s/"+newKey+"/cfg/school").set({since});
+      await copySpace("s/"+oldKey+"/", "s/"+newKey+"/", false);
+      // 예전 코드로 접속해 있던 사람들을 입장 화면으로 보내는 표시
+      await db.doc("s/"+oldKey+"/cfg/moved").set({at:Date.now()+1});
+      // 예전 공간 비우기 (옮긴 뒤)
+      await copySpace("s/"+oldKey+"/", "s/"+newKey+"/", true).catch(()=>{});
+      try{ await db.doc("s/"+oldKey+"/cfg/school").delete(); }catch(_){}
+      closeDlg("dlg-code"); $("code-ed").hidden=true;
+      enter(nc, {key:newKey, since});
+      toast(`학교코드를 ${nc}(으)로 바꿨습니다. 참석자에게 새 코드를 알려 주세요.`);
+    }catch(e){
+      writeErr(e);
+      KEY=oldKey; subscribe();
+    }
+    pendingCode=null; b.disabled=false; b.textContent="변경";
+  });
+
+  /* ---------- boot ---------- */
+  render();
+  (async()=>{
+    const cfgOk = !!FIREBASE_CONFIG.projectId && !/^여기에/.test(FIREBASE_CONFIG.projectId);
+    let d;
+    if(cfgOk && window.firebase){
+      try{ firebase.initializeApp(FIREBASE_CONFIG); d=firebase.firestore(); }catch(err){ d=null; }
+    }
+    if(!d){
+      d=localDB();
+      const w=$("cfgwarn"); w.hidden=false;
+      if(cfgOk && !window.firebase) w.textContent="Firebase를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요. 지금은 이 기기에만 저장됩니다.";
+    }
+    const u=null, dl=localDownloads();
+    db=d; downloads=dl;
+    if(u){ state.canEdit=await u.canEdit(); state.canWrite=await u.can("data.write"); }
+    if(!downloads) $("btn-pdf").hidden=true;
+    if(!db){ $("code-err").textContent="서명 저장소에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 새로고침해 주세요."; $("code-err").hidden=false; return; }
+    // 같은 탭에서 이미 코드를 입력했으면 바로 입장
+    let saved=null; try{ saved=sessionStorage.getItem("sc"); }catch(_){}
+    if(saved){ try{ const info=await checkCode(saved); if(info){ enter(saved, info); return; } }catch(_){} }
+    showGate();
+  })();
+})();
+</script>
+</body>
+</html>
