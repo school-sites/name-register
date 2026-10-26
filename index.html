@@ -123,6 +123,26 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
 .code-ed{display:flex;flex-direction:column;gap:12px}
 .code-ed .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 .code-now{font-size:22px;letter-spacing:.2em;font-variant-numeric:tabular-nums;color:var(--ink)}
+/* 휴지통 · 삭제 취소 */
+.trash-ed{display:flex;flex-direction:column;gap:10px}
+.trash-ed .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.trash-head{display:flex;align-items:baseline;gap:8px;font-size:16px}
+.trash-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:6px;max-height:320px;overflow:auto}
+.trash-list li{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.trash-list li:last-child{border-bottom:0}
+.trash-list .who{font-weight:600;min-width:0}
+.trash-list .meta{color:var(--muted);font-size:13px;flex:1;min-width:0}
+.trash-list .empty{color:var(--muted);justify-content:center;padding:18px}
+.undo{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:8px 8px 8px 16px;border-radius:8px;font-size:14px;z-index:31;display:flex;align-items:center;gap:12px;width:max-content;max-width:calc(100% - 32px)}
+.undo button{background:transparent;color:var(--accent-soft);border-color:transparent;font-weight:700;padding:6px 10px}
+.undo button:hover{border-color:var(--accent-soft)}
+/* 지난 연수 기록 */
+.arch-ed,.arch-view{display:flex;flex-direction:column;gap:10px}
+.arch-ed .row,.arch-view .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.arch-vh{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.arch-vh b{font-size:17px}
+.arch-view table{min-width:420px}
+.arch-view td.miss{color:var(--muted)}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
 </style>
 </head>
@@ -175,6 +195,8 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
       <button type="button" id="btn-roster">명단 편집</button>
       <button type="button" id="btn-clear">제출 내역 모두 지우기</button>
       <button type="button" id="btn-code-open">학교코드 변경</button>
+      <button type="button" id="btn-trash">휴지통</button>
+      <button type="button" id="btn-arch">지난 기록</button>
     </div>
     <div class="grp" style="margin-left:auto">
       <button type="button" id="btn-admin" class="ghost">관리자 모드</button>
@@ -199,6 +221,47 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
     <div class="row">
       <button type="button" id="btn-code-cancel">취소</button>
       <button type="button" class="primary" id="btn-code-save">학교코드 변경</button>
+    </div>
+  </section>
+
+  <section class="box trash-ed" id="trash-ed" hidden aria-label="휴지통">
+    <div class="trash-head"><b>휴지통</b><span id="trash-count" class="note"></span></div>
+    <p class="note">지운 서명과 불참 내역은 여기에 남습니다. 되살리면 원래 줄에 그대로 다시 나타납니다. 연수가 끝나 PDF를 저장했다면 휴지통도 비워 주세요.</p>
+    <ul class="trash-list" id="trash-list"></ul>
+    <div class="row">
+      <button type="button" class="ghost del" id="btn-trash-empty">휴지통 비우기</button>
+      <span style="flex:1"></span>
+      <button type="button" id="btn-trash-close">닫기</button>
+      <button type="button" class="primary" id="btn-trash-all">모두 되살리기</button>
+    </div>
+  </section>
+
+  <section class="box arch-ed" id="arch-ed" hidden aria-label="지난 연수 기록">
+    <div class="trash-head"><b>지난 연수 기록</b><span id="arch-count" class="note"></span></div>
+    <p class="note">연수명을 바꾸면, 바꾸기 전의 연수명과 그때의 서명이 여기에 자동으로 저장됩니다. 지금 화면의 서명은 그대로 남습니다.</p>
+    <ul class="trash-list" id="arch-list"></ul>
+    <div class="row">
+      <button type="button" id="btn-arch-save">지금 내용 기록으로 저장</button>
+      <span style="flex:1"></span>
+      <button type="button" id="btn-arch-close">닫기</button>
+    </div>
+  </section>
+
+  <section class="box arch-view" id="arch-view" hidden aria-label="지난 연수 기록 보기">
+    <div class="arch-vh">
+      <div><b id="av-title"></b><div class="note" id="av-meta"></div></div>
+      <button type="button" id="btn-av-back">목록으로</button>
+    </div>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th scope="col">부서</th><th scope="col">성명</th><th scope="col">서명 / 불참 사유</th></tr></thead>
+        <tbody id="av-rows"></tbody>
+      </table>
+    </div>
+    <div class="row">
+      <button type="button" class="ghost del" id="btn-av-del">이 기록 삭제</button>
+      <span style="flex:1"></span>
+      <button type="button" class="primary" id="btn-av-pdf">이 기록 PDF로 저장</button>
     </div>
   </section>
 </div>
@@ -238,10 +301,34 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
 <div class="scrim" id="dlg-clear" hidden role="dialog" aria-modal="true" aria-labelledby="clear-h">
   <div class="modal">
     <h2 id="clear-h">제출 내역 모두 지우기</h2>
-    <p>명단의 모든 서명과 불참 내역이 삭제됩니다. 연수명과 날짜는 그대로 유지됩니다.</p>
+    <p>명단의 모든 서명과 불참 내역을 휴지통으로 옮깁니다. 휴지통에서 언제든 되살릴 수 있고, 연수명과 날짜는 그대로 유지됩니다.</p>
     <div class="mrow">
       <button type="button" id="btn-clear-cancel">취소</button>
       <button type="button" class="danger" id="btn-clear-ok">모두 지우기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 휴지통 비우기 -->
+<div class="scrim" id="dlg-trash" hidden role="dialog" aria-modal="true" aria-labelledby="trash-h">
+  <div class="modal">
+    <h2 id="trash-h">휴지통 비우기</h2>
+    <p id="trash-msg"></p>
+    <div class="mrow">
+      <button type="button" id="btn-trash-no">취소</button>
+      <button type="button" class="danger" id="btn-trash-ok">완전히 삭제</button>
+    </div>
+  </div>
+</div>
+
+<!-- 지난 기록 삭제 -->
+<div class="scrim" id="dlg-arch" hidden role="dialog" aria-modal="true" aria-labelledby="arch-h">
+  <div class="modal">
+    <h2 id="arch-h">지난 기록 삭제</h2>
+    <p id="arch-msg"></p>
+    <div class="mrow">
+      <button type="button" id="btn-arch-no">취소</button>
+      <button type="button" class="danger" id="btn-arch-ok">삭제</button>
     </div>
   </div>
 </div>
@@ -285,11 +372,13 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
 </div>
 
 <div class="toast" id="toast" hidden role="status"></div>
+<div class="undo" id="undo" hidden role="status"><span id="undo-msg"></span><button type="button" id="btn-undo">삭제 취소</button></div>
+
 
 <script>
 (function(){
   const $ = id => document.getElementById(id);
-  const state = { meeting:{title:"",date:""}, roster:[], entries:{}, canWrite:null, canEdit:false, admin:false, reopen:new Set(), sigs:{}, since:0 };
+  const state = { meeting:{title:"",date:""}, roster:[], entries:{}, canWrite:null, canEdit:false, admin:false, reopen:new Set(), sigs:{}, trash:{}, archives:{}, since:0 };
   let db = null, downloads = null, current = null;
 
   /* ============================================================
@@ -322,7 +411,7 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
         delete:async()=>{ delete data[path]; save(); },
         onSnapshot(fn){ const f=()=>fn(snap(id,data[path])); subs.add(f); f(); return ()=>subs.delete(f); }
       }; },
-      collection(c){ const q=()=>{ const docs=Object.keys(data).filter(k=>k.startsWith(c+"/")).map(k=>snap(k.slice(c.length+1),data[k])); return {docs,size:docs.length,empty:!docs.length}; };
+      collection(c){ const q=()=>{ const docs=Object.keys(data).filter(k=>k.startsWith(c+"/") && !k.slice(c.length+1).includes("/")).map(k=>snap(k.slice(c.length+1),data[k])); return {docs,size:docs.length,empty:!docs.length}; };
         return { get:async()=>q(), onSnapshot(fn){ const f=()=>fn(q()); subs.add(f); f(); return ()=>subs.delete(f); } }; }
     };
   }
@@ -439,6 +528,7 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
       tr.append(td2,td3); tb.appendChild(tr);
     });
   }
+  const _render=render; render=function(){ _render(); try{ renderTrash(); }catch(_){} try{ renderArch(); }catch(_){} };
   function btn(label,cls,fn){ const b=document.createElement("button"); b.type="button"; b.className=cls; b.textContent=label; b.addEventListener("click",fn); return b; }
 
   /* ---------- signature pad ---------- */
@@ -495,14 +585,20 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
   const PW_HASH="47ef5c2388f3ab3106829faf529e7d94153f43f20a25af8f871370d8db3be352";
   async function sha256(s){ if(!(window.crypto&&crypto.subtle)) return sha256js(s); const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,"0")).join(""); }
   // 서명 그림·불참 사유는 관리자 모드에서만 내려받습니다 (참석자 휴대폰에는 제출 여부만 전달)
-  let unsubSigs=null;
+  let unsubSigs=null, unsubTrash=null, unsubArch=null;
   function privOf(id,e){ return state.sigs[id] || {sig:e&&e.sig, reason:e&&e.reason}; }
   function applyAdmin(){
     if(state.admin && db && KEY && !unsubSigs){
       unsubSigs=sdb.collection("sigs").onSnapshot(s=>{ const m={}; s.docs.forEach(x=>{ m[x.id]=x.data(); }); state.sigs=m; render(); },()=>{});
     } else if(!state.admin && unsubSigs){ unsubSigs(); unsubSigs=null; state.sigs={}; }
+    if(state.admin && db && KEY && !unsubTrash){
+      unsubTrash=sdb.collection("trash_entries").onSnapshot(s=>{ const m={}; s.docs.forEach(x=>{ m[x.id]=x.data(); }); state.trash=m; render(); },()=>{});
+    } else if(!state.admin && unsubTrash){ unsubTrash(); unsubTrash=null; state.trash={}; }
+    if(state.admin && db && KEY && !unsubArch){
+      unsubArch=sdb.collection("archives").onSnapshot(s=>{ const m={}; s.docs.forEach(x=>{ m[x.id]=x.data(); }); state.archives=m; render(); },()=>{});
+    } else if(!state.admin && unsubArch){ unsubArch(); unsubArch=null; state.archives={}; }
     $("admin-tools").hidden=!state.admin; $("meta-form").hidden=!state.admin; $("progress").hidden=!state.admin;
-    if(!state.admin){ $("roster-ed").hidden=true; $("code-ed").hidden=true; }
+    if(!state.admin){ $("roster-ed").hidden=true; $("code-ed").hidden=true; $("trash-ed").hidden=true; $("undo").hidden=true; $("arch-ed").hidden=true; $("arch-view").hidden=true; }
     $("btn-admin").textContent = state.admin ? "관리자 모드 끄기" : "관리자 모드";
     render();
   }
@@ -519,13 +615,23 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
     else { $("pw-err").hidden=false; $("in-pw").select(); }
   });
 
-  document.addEventListener("keydown",ev=>{ if(ev.key==="Escape"){ ["dlg-sign","dlg-absent","dlg-clear","dlg-admin","dlg-del","dlg-code"].forEach(id=>{ if(!$(id).hidden) closeDlg(id); }); } });
+  document.addEventListener("keydown",ev=>{ if(ev.key==="Escape"){ ["dlg-sign","dlg-absent","dlg-clear","dlg-admin","dlg-del","dlg-code","dlg-trash","dlg-arch"].forEach(id=>{ if(!$(id).hidden) closeDlg(id); }); } });
 
   /* ---------- admin ---------- */
   $("meta-form").addEventListener("submit",async ev=>{
     ev.preventDefault(); if(!db) return;
     const title=$("in-title").value.trim(), date=$("in-date").value;
-    try{ await sdb.doc("cfg/meeting").set({title,date}); toast("연수 정보를 저장했습니다."); }catch(e){ writeErr(e); }
+    const old={...state.meeting};
+    const b=$("btn-meta"); b.disabled=true;
+    try{
+      let archived=false;
+      if(old.title && title!==old.title && (state.roster.length || Object.keys(state.entries).length)){
+        await archiveCurrent(); archived=true;   // 지금 서명은 그대로 두고 기록만 남김
+      }
+      await sdb.doc("cfg/meeting").set({title,date});
+      toast(archived ? `연수 정보를 저장했습니다. 이전 연수 「${old.title}」의 서명은 지난 기록에 남겼습니다.` : "연수 정보를 저장했습니다.");
+    }catch(e){ writeErr(e); }
+    b.disabled=false;
   });
   /* 명단 입력 해석
      - "기획팀: 김민준 이서연, 박지호"  → 콜론 앞이 부서, 뒤는 이름 여러 개
@@ -590,13 +696,13 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
   });
   function openDel(p,e){
     current=p;
-    $("del-msg").textContent=`${p.dept?p.dept+" ":""}${p.name}님의 ${e.kind==="absent"?"불참 내역":"서명"}을 삭제합니다. 삭제하면 미제출 상태로 돌아가고 되돌릴 수 없습니다.`;
+    $("del-msg").textContent=`${p.dept?p.dept+" ":""}${p.name}님의 ${e.kind==="absent"?"불참 내역":"서명"}을 휴지통으로 옮깁니다. 미제출 상태로 돌아가며, 휴지통에서 다시 되살릴 수 있습니다.`;
     openDlg("dlg-del");
   }
   $("btn-del-cancel").addEventListener("click",()=>closeDlg("dlg-del"));
   $("btn-del-ok").addEventListener("click",async()=>{
     if(!current||!db) return; const p=current, b=$("btn-del-ok"); b.disabled=true;
-    try{ await sdb.doc("entries/"+p.id).delete(); await sdb.doc("sigs/"+p.id).delete(); state.reopen.delete(p.id); closeDlg("dlg-del"); render(); toast(`${p.name}님의 제출 내역을 삭제했습니다.`); }
+    try{ await moveToTrash([p.id]); state.reopen.delete(p.id); closeDlg("dlg-del"); render(); showUndo(`${p.name}님의 제출 내역을 휴지통으로 옮겼습니다.`, [p.id]); }
     catch(e){ writeErr(e); }
     b.disabled=false;
   });
@@ -605,12 +711,186 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
   $("btn-clear-ok").addEventListener("click",async()=>{
     if(!db) return; const b=$("btn-clear-ok"); b.disabled=true;
     try{
-      // 서로 다른 문서이므로 10개씩 묶어 동시에 지웁니다 (100명이어도 몇 초)
-      for(const col of ["entries","sigs"]){
+      // 지우는 대신 휴지통으로 옮깁니다 (10개씩 묶어 동시에 처리)
+      const ids=(await sdb.collection("entries").get()).docs.map(d=>d.id);
+      await moveToTrash(ids);
+      // 제출 기록 없이 남은 서명 조각 정리
+      const left=(await sdb.collection("sigs").get()).docs.map(d=>d.id).filter(id=>!ids.includes(id));
+      await inBatches(left, id=>sdb.doc("sigs/"+id).delete());
+      state.reopen.clear(); closeDlg("dlg-clear");
+      if(ids.length) showUndo(`제출 내역 ${ids.length}건을 휴지통으로 옮겼습니다.`, ids); else toast("지울 제출 내역이 없습니다.");
+    }catch(e){ writeErr(e); }
+    b.disabled=false;
+  });
+
+  /* ---------- 휴지통 (지운 서명 되살리기) ---------- */
+  async function moveToTrash(ids){
+    const now=Date.now();
+    await inBatches(ids, async id=>{
+      const e=await sdb.doc("entries/"+id).get(); if(!e.exists) return;
+      const sg=await sdb.doc("sigs/"+id).get(); const d=clone(e.data());
+      await sdb.doc("trash_sigs/"+id).set(sg.exists?clone(sg.data()):{});
+      await sdb.doc("trash_entries/"+id).set({kind:d.kind, at:d.at||0, name:d.name||"", deletedAt:now});
+      await sdb.doc("entries/"+id).delete(); await sdb.doc("sigs/"+id).delete();
+    });
+  }
+  async function restoreFromTrash(ids){
+    let ok=0, skip=0;
+    await inBatches(ids, async id=>{
+      if(state.entries[id]){ skip++; return; }   // 지운 뒤 다시 제출한 사람은 지금 제출을 유지
+      const te=await sdb.doc("trash_entries/"+id).get(); if(!te.exists) return;
+      const ts=await sdb.doc("trash_sigs/"+id).get(); const d=clone(te.data());
+      if(ts.exists){ const sd=clone(ts.data()); if(Object.keys(sd).length) await sdb.doc("sigs/"+id).set(sd); }
+      await sdb.doc("entries/"+id).set({kind:d.kind, at:d.at||0, name:d.name||""});
+      await sdb.doc("trash_entries/"+id).delete(); await sdb.doc("trash_sigs/"+id).delete();
+      ok++;
+    });
+    return {ok, skip};
+  }
+  function restoreMsg(r){
+    const tail = r.skip ? ` 지운 뒤 다시 제출한 ${r.skip}명은 지금 제출을 그대로 두었습니다.` : "";
+    return r.ok ? `${r.ok}명의 제출 내역을 되살렸습니다.${tail}` : (r.skip ? tail.trim() : "되살릴 내역이 없습니다.");
+  }
+  let undoT=null, undoIds=[];
+  function showUndo(msg, ids){
+    undoIds=ids.slice(); $("undo-msg").textContent=msg; $("toast").hidden=true; $("undo").hidden=false;
+    clearTimeout(undoT); undoT=setTimeout(()=>{ $("undo").hidden=true; }, 10000);
+  }
+  $("btn-undo").addEventListener("click",async()=>{
+    clearTimeout(undoT); $("undo").hidden=true;
+    try{ toast(restoreMsg(await restoreFromTrash(undoIds))); }catch(e){ writeErr(e); }
+  });
+  function renderTrash(){
+    const ids=Object.keys(state.trash);
+    $("btn-trash").textContent = ids.length ? `휴지통 (${ids.length})` : "휴지통";
+    if($("trash-ed").hidden) return;
+    $("trash-count").textContent = `${ids.length}건`;
+    $("btn-trash-all").disabled = !ids.length; $("btn-trash-empty").disabled = !ids.length;
+    const ul=$("trash-list"); ul.textContent="";
+    if(!ids.length){ const li=document.createElement("li"); li.className="empty"; li.textContent="휴지통이 비어 있습니다."; ul.appendChild(li); return; }
+    const byId={}; state.roster.forEach(p=>{ byId[p.id]=p; });
+    ids.sort((a,b)=>(state.trash[b].deletedAt||0)-(state.trash[a].deletedAt||0)).forEach(id=>{
+      const t=state.trash[id], p=byId[id];
+      const li=document.createElement("li");
+      const who=document.createElement("span"); who.className="who"; who.textContent=(p&&p.dept?p.dept+" ":"")+((p&&p.name)||t.name||"이름 없음");
+      const meta=document.createElement("span"); meta.className="meta";
+      meta.textContent=`${t.kind==="absent"?"불참":"서명"} · 지운 시각 ${fmtTime(t.deletedAt)}${p?"":" · 지금 명단에 없음"}`;
+      const again=!!state.entries[id];
+      const bt=btn(again?"다시 제출함":"되살리기","sm",async()=>{ bt.disabled=true; try{ toast(restoreMsg(await restoreFromTrash([id]))); }catch(e){ writeErr(e); bt.disabled=false; } });
+      bt.disabled=again;
+      li.append(who,meta,bt); ul.appendChild(li);
+    });
+  }
+  $("btn-trash").addEventListener("click",()=>{ $("trash-ed").hidden=false; renderTrash(); $("trash-ed").scrollIntoView({behavior:"smooth",block:"nearest"}); });
+  $("btn-trash-close").addEventListener("click",()=>{ $("trash-ed").hidden=true; });
+  $("btn-trash-all").addEventListener("click",async()=>{
+    const b=$("btn-trash-all"); b.disabled=true; b.textContent="되살리는 중…";
+    try{ toast(restoreMsg(await restoreFromTrash(Object.keys(state.trash)))); }catch(e){ writeErr(e); }
+    b.textContent="모두 되살리기"; renderTrash();
+  });
+  $("btn-trash-empty").addEventListener("click",()=>{
+    $("trash-msg").textContent=`휴지통의 ${Object.keys(state.trash).length}건을 완전히 삭제합니다. 삭제하면 다시 되살릴 수 없습니다.`;
+    openDlg("dlg-trash");
+  });
+  $("btn-trash-no").addEventListener("click",()=>closeDlg("dlg-trash"));
+  $("btn-trash-ok").addEventListener("click",async()=>{
+    const b=$("btn-trash-ok"); b.disabled=true;
+    try{
+      for(const col of ["trash_entries","trash_sigs"]){
         const ids=(await sdb.collection(col).get()).docs.map(d=>d.id);
-        for(let i=0;i<ids.length;i+=10) await Promise.all(ids.slice(i,i+10).map(id=>sdb.doc(col+"/"+id).delete()));
+        await inBatches(ids, id=>sdb.doc(col+"/"+id).delete());
       }
-      closeDlg("dlg-clear"); toast("제출 내역을 모두 지웠습니다.");
+      closeDlg("dlg-trash"); toast("휴지통을 비웠습니다.");
+    }catch(e){ writeErr(e); }
+    b.disabled=false;
+  });
+
+  /* ---------- 지난 연수 기록 ---------- */
+  // archives/{id} : {title, date, savedAt, roster, entries:{사람id:{kind,at,name}}, count, total}
+  // archives/{id}/sigs/{사람id} : {sig} 또는 {reason}   (문서 크기 제한 때문에 서명은 따로)
+  async function archiveCurrent(){
+    const id=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    const ents={}; Object.keys(state.entries).forEach(k=>{ const e=state.entries[k]; ents[k]={kind:e.kind, at:e.at||0, name:e.name||""}; });
+    const sigDocs=(await sdb.collection("sigs").get()).docs;
+    await sdb.doc("archives/"+id).set({title:state.meeting.title||"", date:state.meeting.date||"", savedAt:Date.now(),
+      roster:clone(state.roster), entries:ents, count:Object.keys(ents).length, total:state.roster.length});
+    await inBatches(sigDocs.filter(d=>ents[d.id]), d=>sdb.doc("archives/"+id+"/sigs/"+d.id).set(clone(d.data())));
+    return id;
+  }
+  let viewing=null; // {id, data, sigs}
+  function renderArch(){
+    const ids=Object.keys(state.archives);
+    $("btn-arch").textContent = ids.length ? `지난 기록 (${ids.length})` : "지난 기록";
+    if($("arch-ed").hidden) return;
+    $("arch-count").textContent=`${ids.length}건`;
+    const ul=$("arch-list"); ul.textContent="";
+    if(!ids.length){ const li=document.createElement("li"); li.className="empty"; li.textContent="아직 저장된 지난 기록이 없습니다."; ul.appendChild(li); return; }
+    ids.sort((a,b)=>(state.archives[b].savedAt||0)-(state.archives[a].savedAt||0)).forEach(id=>{
+      const a=state.archives[id];
+      const li=document.createElement("li");
+      const who=document.createElement("span"); who.className="who"; who.textContent=a.title||"연수명 없음";
+      const meta=document.createElement("span"); meta.className="meta";
+      meta.textContent=`${a.date?fmtDate(a.date)+" · ":""}제출 ${a.count||0} / ${a.total||0}명 · 저장 ${fmtTime(a.savedAt)}`;
+      li.append(who,meta,btn("보기","sm",()=>openArch(id)));
+      ul.appendChild(li);
+    });
+  }
+  async function openArch(id){
+    const a=state.archives[id]; if(!a) return;
+    const sigs={}; try{ (await sdb.collection("archives/"+id+"/sigs").get()).docs.forEach(d=>{ sigs[d.id]=d.data(); }); }catch(_){}
+    viewing={id, data:a, sigs};
+    $("av-title").textContent=a.title||"연수명 없음";
+    $("av-meta").textContent=`${a.date?fmtDate(a.date)+" · ":""}제출 ${a.count||0} / ${a.total||0}명 · 저장 ${fmtTime(a.savedAt)}`;
+    const tb=$("av-rows"); tb.textContent="";
+    const R=Array.isArray(a.roster)?a.roster:[];
+    if(!R.length){ const tr=document.createElement("tr"); tr.className="emptyrow"; const td=document.createElement("td"); td.colSpan=3; td.textContent="이 기록에는 명단이 없습니다."; tr.appendChild(td); tb.appendChild(tr); }
+    R.forEach(p=>{
+      const tr=document.createElement("tr"); const e=(a.entries||{})[p.id], sg=sigs[p.id]||{};
+      const t1=document.createElement("td"); t1.className="dept"; t1.textContent=p.dept||"—";
+      const t2=document.createElement("td"); t2.className="name"; t2.textContent=p.name;
+      const t3=document.createElement("td");
+      if(e&&e.kind==="sign"&&sg.sig){ const im=document.createElement("img"); im.className="sigimg"; im.alt=p.name+" 서명"; im.src=sg.sig; t3.appendChild(im); }
+      else if(e&&e.kind==="absent"){ const w=document.createElement("div"); w.className="signed"; const pill=document.createElement("span"); pill.className="pill absent"; pill.textContent="불참"; const r=document.createElement("span"); r.className="reason"; r.textContent=sg.reason||""; w.append(pill,r); t3.appendChild(w); }
+      else { t3.className="miss"; t3.textContent= e ? "제출함" : "미제출"; }
+      tr.append(t1,t2,t3); tb.appendChild(tr);
+    });
+    $("arch-ed").hidden=true; $("arch-view").hidden=false; $("arch-view").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+  $("btn-arch").addEventListener("click",()=>{ $("arch-view").hidden=true; $("arch-ed").hidden=false; renderArch(); $("arch-ed").scrollIntoView({behavior:"smooth",block:"nearest"}); });
+  $("btn-arch-close").addEventListener("click",()=>{ $("arch-ed").hidden=true; });
+  $("btn-av-back").addEventListener("click",()=>{ $("arch-view").hidden=true; $("arch-ed").hidden=false; renderArch(); });
+  $("btn-arch-save").addEventListener("click",async()=>{
+    if(!state.roster.length && !Object.keys(state.entries).length){ toast("저장할 명단이나 서명이 없습니다."); return; }
+    const b=$("btn-arch-save"); b.disabled=true;
+    try{ await archiveCurrent(); toast("지금 내용을 지난 기록에 저장했습니다."); }catch(e){ writeErr(e); }
+    b.disabled=false;
+  });
+  $("btn-av-pdf").addEventListener("click",async()=>{
+    if(!viewing) return;
+    if(!downloads){ toast("이 화면에서는 파일 저장을 쓸 수 없습니다."); return; }
+    const a=viewing.data, sg=viewing.sigs, b=$("btn-av-pdf"); b.disabled=true; b.textContent="PDF 만드는 중…";
+    try{
+      const buf=await buildPdf({meeting:{title:a.title||"",date:a.date||""}, roster:Array.isArray(a.roster)?a.roster:[], entries:a.entries||{}, priv:(id)=>sg[id]||{}});
+      const name=(a.title||"교직원연수")+"_연수등록부"+(a.date?"_"+a.date:"")+".pdf";
+      await downloads.save({filename:name.replace(/[\\/:*?"<>|]/g,"_"),data:buf});
+      toast("PDF를 저장했습니다.");
+    }catch(e){ if(e&&e.code==="declined"){} else toast("PDF를 만들지 못했습니다. 잠시 후 다시 시도해 주세요."); }
+    b.disabled=false; b.textContent="이 기록 PDF로 저장";
+  });
+  $("btn-av-del").addEventListener("click",()=>{
+    if(!viewing) return;
+    $("arch-msg").textContent=`「${viewing.data.title||"연수명 없음"}」 기록과 그때의 서명을 완전히 삭제합니다. 삭제하면 되돌릴 수 없습니다.`;
+    openDlg("dlg-arch");
+  });
+  $("btn-arch-no").addEventListener("click",()=>{ $("dlg-arch").hidden=true; });
+  $("btn-arch-ok").addEventListener("click",async()=>{
+    if(!viewing) return; const id=viewing.id, b=$("btn-arch-ok"); b.disabled=true;
+    try{
+      const ids=(await sdb.collection("archives/"+id+"/sigs").get()).docs.map(d=>d.id);
+      await inBatches(ids, x=>sdb.doc("archives/"+id+"/sigs/"+x).delete());
+      await sdb.doc("archives/"+id).delete();
+      $("dlg-arch").hidden=true; viewing=null; $("arch-view").hidden=true; $("arch-ed").hidden=false; renderArch();
+      toast("지난 기록을 삭제했습니다.");
     }catch(e){ writeErr(e); }
     b.disabled=false;
   });
@@ -618,18 +898,19 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
   /* ---------- PDF ---------- */
   function loadImg(src){ return new Promise(res=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>res(null); i.src=src; }); }
   function fitText(c,txt,maxW){ if(c.measureText(txt).width<=maxW) return txt; while(txt.length>1&&c.measureText(txt+"…").width>maxW) txt=txt.slice(0,-1); return txt+"…"; }
-  async function buildPdf(){
+  async function buildPdf(src){
+    src=src||{meeting:state.meeting, roster:state.roster, entries:state.entries, priv:privOf};
     const J=window.jspdf&&window.jspdf.jsPDF; if(!J) throw new Error("nolib");
     try{ await Promise.all([document.fonts.load('600 26px "IBM Plex Sans KR"',"가"),document.fonts.load('800 44px "Nanum Myeongjo"',"가")]); }catch(_){}
     const W=1240,H=1754,M=90, body='"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif';
-    const rows=state.roster, imgs={};
-    await Promise.all(rows.map(async p=>{ const e=state.entries[p.id]; const sg=privOf(p.id,e).sig; if(e&&e.kind==="sign"&&sg) imgs[p.id]=await loadImg(sg); }));
+    const rows=src.roster, imgs={};
+    await Promise.all(rows.map(async p=>{ const e=src.entries[p.id]; const sg=src.priv(p.id,e).sig; if(e&&e.kind==="sign"&&sg) imgs[p.id]=await loadImg(sg); }));
     const headH=364, rowH=84, thH=54, footH=70;
     const firstCap=Math.floor((H-headH-thH-footH-M)/rowH), nextCap=Math.floor((H-M-thH-footH-M)/rowH);
     const pages=[]; let i=0; pages.push(rows.slice(0,firstCap)); i=firstCap; while(i<rows.length){ pages.push(rows.slice(i,i+nextCap)); i+=nextCap; }
     const pdf=new J({unit:"mm",format:"a4"});
     const cols=[{k:"no",w:90,t:"번호"},{k:"dept",w:250,t:"부서"},{k:"name",w:210,t:"성명"},{k:"sig",w:W-2*M-550,t:"서명 / 불참 사유"}];
-    const done=rows.filter(p=>state.entries[p.id]).length, now=new Date();
+    const done=rows.filter(p=>src.entries[p.id]).length, now=new Date();
     let n=0;
     pages.forEach((pg,pi)=>{
       const c=document.createElement("canvas"); c.width=W; c.height=H; const g=c.getContext("2d");
@@ -641,7 +922,7 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
         g.beginPath(); g.moveTo(M,y+60); g.lineTo(W-M,y+60); g.moveTo(M+170,y); g.lineTo(M+170,y+120); g.stroke();
         g.fillStyle="#f1f3f6"; g.fillRect(M+1,y+1,168,118); g.fillStyle="#111";
         g.font=`600 24px ${body}`; g.fillText("연 수 명",M+40,y+30); g.fillText("연수 날짜",M+32,y+90);
-        g.font=`400 24px ${body}`; g.fillText(fitText(g,state.meeting.title||"",W-2*M-210),M+195,y+30); g.fillText(fmtDate(state.meeting.date),M+195,y+90);
+        g.font=`400 24px ${body}`; g.fillText(fitText(g,src.meeting.title||"",W-2*M-210),M+195,y+30); g.fillText(fmtDate(src.meeting.date),M+195,y+90);
         y+=150; g.font=`400 20px ${body}`; g.fillStyle="#555"; g.textAlign="right"; g.fillText(`제출 ${done} / ${rows.length}명`,W-M,y); g.textAlign="left"; g.fillStyle="#111";
         y=headH;
       }
@@ -650,12 +931,12 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
       let x=M; cols.forEach(cl=>{ g.textAlign="center"; g.fillText(cl.t,x+cl.w/2,y+thH/2); x+=cl.w; }); g.textAlign="left";
       const top=y; y+=thH;
       pg.forEach(p=>{
-        n++; const e=state.entries[p.id]; let x=M;
+        n++; const e=src.entries[p.id]; let x=M;
         g.font=`400 22px ${body}`; g.fillStyle="#111"; g.textAlign="center"; g.fillText(String(n),x+cols[0].w/2,y+rowH/2); x+=cols[0].w;
         g.fillText(fitText(g,p.dept||"",cols[1].w-24),x+cols[1].w/2,y+rowH/2); x+=cols[1].w;
         g.font=`600 23px ${body}`; g.fillText(fitText(g,p.name,cols[2].w-24),x+cols[2].w/2,y+rowH/2); x+=cols[2].w; g.textAlign="left";
         if(e&&e.kind==="sign"&&imgs[p.id]){ const im=imgs[p.id], bw=cols[3].w-40, bh=rowH-14, s=Math.min(bw/im.width,bh/im.height); g.drawImage(im,x+(cols[3].w-im.width*s)/2,y+(rowH-im.height*s)/2,im.width*s,im.height*s); }
-        else if(e&&e.kind==="absent"){ g.font=`600 21px ${body}`; g.fillStyle="#8a5a12"; g.fillText("불참",x+20,y+rowH/2); g.font=`400 20px ${body}`; g.fillStyle="#333"; g.fillText(fitText(g,privOf(p.id,e).reason||"",cols[3].w-100),x+80,y+rowH/2); }
+        else if(e&&e.kind==="absent"){ g.font=`600 21px ${body}`; g.fillStyle="#8a5a12"; g.fillText("불참",x+20,y+rowH/2); g.font=`400 20px ${body}`; g.fillStyle="#333"; g.fillText(fitText(g,src.priv(p.id,e).reason||"",cols[3].w-100),x+80,y+rowH/2); }
         y+=rowH; g.strokeStyle="#c9ced6"; g.beginPath(); g.moveTo(M,y); g.lineTo(W-M,y); g.stroke();
       });
       g.strokeStyle="#222"; g.lineWidth=2; g.strokeRect(M,top,W-2*M,y-top); g.lineWidth=1; g.strokeStyle="#c9ced6";
@@ -703,10 +984,12 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
   function unsubscribeAll(){
     unsubs.forEach(u=>{ try{u()}catch(_){} }); unsubs=[];
     if(unsubSigs){ try{unsubSigs()}catch(_){} unsubSigs=null; }
+    if(unsubTrash){ try{unsubTrash()}catch(_){} unsubTrash=null; }
+    if(unsubArch){ try{unsubArch()}catch(_){} unsubArch=null; }
   }
   function subscribe(){
     unsubscribeAll();
-    state.roster=[]; state.entries={}; state.sigs={}; state.meeting={title:"",date:""}; state.reopen.clear();
+    state.roster=[]; state.entries={}; state.sigs={}; state.trash={}; state.archives={}; state.meeting={title:"",date:""}; state.reopen.clear();
     unsubs.push(sdb.doc("cfg/meeting").onSnapshot(s=>{
       const v=s.exists?s.data():{}; state.meeting={title:v.title||"",date:v.date||""};
       if(document.activeElement!==$("in-title")) $("in-title").value=state.meeting.title;
@@ -735,7 +1018,7 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
     unsubscribeAll(); KEY=null; CODE=null;
     try{ sessionStorage.removeItem("sc"); sessionStorage.removeItem("adm"); }catch(_){}
     state.admin=false; applyAdmin();
-    ["dlg-sign","dlg-absent","dlg-clear","dlg-admin","dlg-del","dlg-code"].forEach(id=>{ $(id).hidden=true; });
+    ["dlg-sign","dlg-absent","dlg-clear","dlg-admin","dlg-del","dlg-code","dlg-trash","dlg-arch"].forEach(id=>{ $(id).hidden=true; });
     showGate("학교코드가 바뀌었습니다.<br>담당 선생님께 새 코드를 받아 입력해 주세요.");
   }
   function digitsOnly(el){ const v=el.value.replace(/\D/g,"").slice(0,5); if(v!==el.value) el.value=v; }
@@ -778,12 +1061,23 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
       const s=await db.doc(from+"cfg/"+id).get();
       if(s.exists) await db.doc(to+"cfg/"+id).set(clone(s.data()));
     }
-    for(const col of ["entries","sigs"]){
+    for(const col of ["entries","sigs","trash_entries","trash_sigs"]){
       const docs=(await db.collection(from+col).get()).docs;
       await inBatches(docs, d=>db.doc(to+col+"/"+d.id).set(clone(d.data())));
     }
+    // 지난 기록: 기록 문서와 그 안의 서명
+    const archDocs=(await db.collection(from+"archives").get()).docs;
+    for(const a of archDocs){
+      await db.doc(to+"archives/"+a.id).set(clone(a.data()));
+      const sd=(await db.collection(from+"archives/"+a.id+"/sigs").get()).docs;
+      await inBatches(sd, d=>db.doc(to+"archives/"+a.id+"/sigs/"+d.id).set(clone(d.data())));
+      if(removeOld){
+        await inBatches(sd, d=>db.doc(from+"archives/"+a.id+"/sigs/"+d.id).delete());
+        await db.doc(from+"archives/"+a.id).delete();
+      }
+    }
     if(!removeOld) return;
-    for(const col of ["entries","sigs"]){
+    for(const col of ["entries","sigs","trash_entries","trash_sigs"]){
       const ids=(await db.collection(from+col).get()).docs.map(d=>d.id);
       await inBatches(ids, id=>db.doc(from+col+"/"+id).delete());
     }
