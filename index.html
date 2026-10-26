@@ -238,7 +238,7 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
 
   <section class="box arch-ed" id="arch-ed" hidden aria-label="지난 연수 기록">
     <div class="trash-head"><b>지난 연수 기록</b><span id="arch-count" class="note"></span></div>
-    <p class="note">연수명을 바꾸면, 바꾸기 전의 연수명과 그때의 서명이 여기에 자동으로 저장됩니다. 지금 화면의 서명은 그대로 남습니다.</p>
+    <p class="note">연수명이나 연수 날짜를 바꾸면, 바꾸기 전의 연수명·날짜와 그때의 서명이 여기에 자동으로 저장됩니다. 지금 화면의 서명은 그대로 남습니다.</p>
     <ul class="trash-list" id="arch-list"></ul>
     <div class="row">
       <button type="button" id="btn-arch-save">지금 내용 기록으로 저장</button>
@@ -625,11 +625,13 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
     const b=$("btn-meta"); b.disabled=true;
     try{
       let archived=false;
-      if(old.title && title!==old.title && (state.roster.length || Object.keys(state.entries).length)){
+      const changed=(old.title && title!==old.title) || (old.date && date!==old.date);
+      if(changed && (state.roster.length || Object.keys(state.entries).length)){
         await archiveCurrent(); archived=true;   // 지금 서명은 그대로 두고 기록만 남김
       }
       await sdb.doc("cfg/meeting").set({title,date});
-      toast(archived ? `연수 정보를 저장했습니다. 이전 연수 「${old.title}」의 서명은 지난 기록에 남겼습니다.` : "연수 정보를 저장했습니다.");
+      const oldName=[old.title, old.date?fmtDate(old.date):""].filter(Boolean).join(" · ");
+      toast(archived ? `연수 정보를 저장했습니다. 이전 연수 「${oldName}」의 서명은 지난 기록에 남겼습니다.` : "연수 정보를 저장했습니다.");
     }catch(e){ writeErr(e); }
     b.disabled=false;
   });
