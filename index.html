@@ -143,6 +143,7 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
 .arch-ed .row,.arch-view .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .arch-vh{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
 .arch-vh b{font-size:17px}
+.av-acts{display:flex;gap:8px;flex-wrap:wrap}
 .arch-view table{min-width:420px}
 .arch-list li.arch-item{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px 12px;padding:12px 14px}
 .arch-item .arch-info{display:flex;flex-direction:column;gap:3px;min-width:0}
@@ -259,7 +260,10 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
   <section class="box arch-view" id="arch-view" hidden aria-label="지난 연수 기록 보기">
     <div class="arch-vh">
       <div><b id="av-title"></b><div class="note" id="av-meta"></div></div>
-      <button type="button" id="btn-av-back">목록으로</button>
+      <div class="av-acts">
+        <button type="button" id="btn-av-back">목록으로</button>
+        <button type="button" class="primary" id="btn-av-pdf">PDF로 저장</button>
+      </div>
     </div>
     <div class="tablebox">
       <table>
@@ -269,8 +273,6 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
     </div>
     <div class="row">
       <button type="button" class="ghost del" id="btn-av-del">이 기록 삭제</button>
-      <span style="flex:1"></span>
-      <button type="button" class="primary" id="btn-av-pdf">이 기록 PDF로 저장</button>
     </div>
   </section>
 </div>
@@ -891,7 +893,7 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
       await downloads.save({filename:name.replace(/[\\/:*?"<>|]/g,"_"),data:buf});
       toast("PDF를 저장했습니다.");
     }catch(e){ if(e&&e.code==="declined"){} else toast("PDF를 만들지 못했습니다. 잠시 후 다시 시도해 주세요."); }
-    b.disabled=false; b.textContent="이 기록 PDF로 저장";
+    b.disabled=false; b.textContent="PDF로 저장";
   });
   function askDelArch(id){
     const a=state.archives[id]; if(!a) return;
