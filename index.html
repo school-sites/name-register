@@ -62,6 +62,8 @@ button.danger{background:var(--danger);color:var(--surface);border-color:var(--d
 button.ghost{border-color:transparent;background:transparent;color:var(--muted);padding:4px 8px;font-size:13px}
 button.ghost:hover{color:var(--accent)}
 button.ghost.del{color:var(--danger)}
+button.del-out{color:var(--danger);border-color:var(--danger)}
+button.del-out:hover:not(:disabled){background:var(--danger-soft);border-color:var(--danger)}
 button.ghost.del:hover{color:var(--danger);background:var(--danger-soft)}
 button.sm{padding:6px 12px;font-size:14px}
 .tablebox{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow-x:auto}
@@ -142,6 +144,13 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
 .arch-vh{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
 .arch-vh b{font-size:17px}
 .arch-view table{min-width:420px}
+.arch-list li.arch-item{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px 12px;padding:12px 14px}
+.arch-item .arch-info{display:flex;flex-direction:column;gap:3px;min-width:0}
+.arch-list{max-height:none}
+.arch-item .arch-title{font-weight:600;word-break:keep-all;overflow-wrap:anywhere}
+.arch-item .arch-meta{color:var(--muted);font-size:13px;line-height:1.5}
+.arch-item .arch-acts{display:flex;flex-direction:column;gap:6px;align-items:stretch}
+.arch-item .arch-acts button{min-width:64px}
 .arch-view td.miss{color:var(--muted)}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
 </style>
@@ -239,7 +248,7 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
   <section class="box arch-ed" id="arch-ed" hidden aria-label="지난 연수 기록">
     <div class="trash-head"><b>지난 연수 기록</b><span id="arch-count" class="note"></span></div>
     <p class="note">연수명이나 연수 날짜를 바꾸면, 바꾸기 전의 연수명·날짜와 그때의 서명이 여기에 자동으로 저장됩니다. 지금 화면의 서명은 그대로 남습니다.</p>
-    <ul class="trash-list" id="arch-list"></ul>
+    <ul class="trash-list arch-list" id="arch-list"></ul>
     <div class="row">
       <button type="button" id="btn-arch-save">지금 내용 기록으로 저장</button>
       <span style="flex:1"></span>
@@ -829,11 +838,16 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
     if(!ids.length){ const li=document.createElement("li"); li.className="empty"; li.textContent="아직 저장된 지난 기록이 없습니다."; ul.appendChild(li); return; }
     ids.sort((a,b)=>(state.archives[b].savedAt||0)-(state.archives[a].savedAt||0)).forEach(id=>{
       const a=state.archives[id];
-      const li=document.createElement("li");
-      const who=document.createElement("span"); who.className="who"; who.textContent=a.title||"연수명 없음";
-      const meta=document.createElement("span"); meta.className="meta";
-      meta.textContent=`${a.date?fmtDate(a.date)+" · ":""}제출 ${a.count||0} / ${a.total||0}명 · 저장 ${fmtTime(a.savedAt)}`;
-      li.append(who,meta,btn("보기","sm",()=>openArch(id)));
+      const li=document.createElement("li"); li.className="arch-item";
+      const info=document.createElement("div"); info.className="arch-info";
+      const tt=document.createElement("span"); tt.className="arch-title"; tt.textContent=a.title||"연수명 없음";
+      const m1=document.createElement("span"); m1.className="arch-meta";
+      m1.textContent=`${a.date?fmtDate(a.date):"날짜 없음"} · 제출 ${a.count||0} / ${a.total||0}명`;
+      const m2=document.createElement("span"); m2.className="arch-meta"; m2.textContent=`기록 저장 ${fmtTime(a.savedAt)}`;
+      info.append(tt,m1,m2);
+      const acts=document.createElement("div"); acts.className="arch-acts";
+      acts.append(btn("보기","sm",()=>openArch(id)), btn("삭제","sm del-out",()=>askDelArch(id)));
+      li.append(info,acts);
       ul.appendChild(li);
     });
   }
@@ -879,6 +893,12 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
     }catch(e){ if(e&&e.code==="declined"){} else toast("PDF를 만들지 못했습니다. 잠시 후 다시 시도해 주세요."); }
     b.disabled=false; b.textContent="이 기록 PDF로 저장";
   });
+  function askDelArch(id){
+    const a=state.archives[id]; if(!a) return;
+    viewing={id, data:a, sigs:{}};
+    $("arch-msg").textContent=`「${a.title||"연수명 없음"}」 기록과 그때의 서명을 완전히 삭제합니다. 삭제하면 되돌릴 수 없습니다.`;
+    openDlg("dlg-arch");
+  }
   $("btn-av-del").addEventListener("click",()=>{
     if(!viewing) return;
     $("arch-msg").textContent=`「${viewing.data.title||"연수명 없음"}」 기록과 그때의 서명을 완전히 삭제합니다. 삭제하면 되돌릴 수 없습니다.`;
