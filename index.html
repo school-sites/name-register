@@ -138,6 +138,9 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
 .undo{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:8px 8px 8px 16px;border-radius:8px;font-size:14px;z-index:31;display:flex;align-items:center;gap:12px;width:max-content;max-width:calc(100% - 32px)}
 .undo button{background:transparent;color:var(--accent-soft);border-color:transparent;font-weight:700;padding:6px 10px}
 .undo button:hover{border-color:var(--accent-soft)}
+/* 명단 엑셀 */
+.excel-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-bottom:12px;border-bottom:1px dashed var(--line)}
+.excel-lbl{width:100%;font-size:13px;font-weight:600;color:var(--muted)}
 /* 지난 연수 기록 */
 .arch-ed,.arch-view{display:flex;flex-direction:column;gap:10px}
 .arch-ed .row,.arch-view .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -214,7 +217,14 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
   </div>
 
   <section class="box roster-ed" id="roster-ed" hidden aria-label="명단 편집">
-    <label class="f" for="in-roster">한 줄에 <b>부서: 이름 이름 이름</b> 형식으로 부서 사람들을 한꺼번에 적으세요. 이름은 띄어쓰기나 쉼표로 구분합니다. 엑셀에서 부서·성명 두 칸을 복사해 붙여 넣어도 됩니다. 이미 제출한 사람의 서명은 이름이 같으면 유지됩니다.
+    <div class="excel-row">
+      <span class="excel-lbl">엑셀로 명단 관리 · A열 부서, B열 성명</span>
+      <button type="button" id="btn-xl-down">현재 명단 엑셀로 받기</button>
+      <button type="button" id="btn-xl-tpl">빈 양식 받기</button>
+      <button type="button" class="primary" id="btn-xl-up">엑셀 올리기</button>
+      <input type="file" id="in-xl" accept=".xlsx,.csv" hidden>
+    </div>
+    <label class="f" for="in-roster"><span>한 줄에 <b>부서: 이름 이름 이름</b> 형식으로 부서 사람들을 한꺼번에 적으세요. 이름은 띄어쓰기나 쉼표로 구분합니다. 엑셀에서 부서·성명 두 칸을 복사해 붙여 넣어도 됩니다. 이미 제출한 사람의 서명은 이름이 같으면 유지됩니다.</span>
       <textarea id="in-roster" rows="8" placeholder="기획팀: 김민준 이서연 박지호&#10;재무팀: 최유진, 정하은&#10;인사팀: 강도윤 윤서아 임지우 한시우"></textarea>
     </label>
     <div class="preview" id="roster-preview" aria-live="polite"></div>
@@ -428,7 +438,7 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
   }
   function localDownloads(){
     return { save:async({filename,data})=>{
-      const url=URL.createObjectURL(new Blob([data],{type:"application/pdf"}));
+      const url=URL.createObjectURL(new Blob([data],{type:/\.xlsx$/i.test(filename)?"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":"application/pdf"}));
       const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(()=>URL.revokeObjectURL(url),4000); return {status:"saved"};
     } };
@@ -459,7 +469,7 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
 
   /* ---------- helpers ---------- */
   let toastT;
-  function toast(msg){ const t=$("toast"); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,3200); }
+  function toast(msg){ const t=$("toast"); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true, msg.length>40?5500:3200); }
   function fmtDate(s){
     if(!s) return "";
     const d=new Date(s+"T00:00:00"); if(isNaN(d)) return s;
@@ -675,6 +685,179 @@ td.dept.grouped{vertical-align:top;border-right:1px solid var(--line);background
     const order=[]; out.forEach(p=>{ if(!order.includes(p.dept)) order.push(p.dept); });
     return order.flatMap(d=>out.filter(p=>p.dept===d));
   }
+  /* ---------- 엑셀(.xlsx) 만들기·읽기: 외부 라이브러리 없이 ---------- */
+  const XL=(()=>{
+    const enc=new TextEncoder();
+    let T=null;
+    function crc32(b){
+      if(!T){ T=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; T[n]=c>>>0; } }
+      let c=0xFFFFFFFF; for(let i=0;i<b.length;i++) c=T[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0;
+    }
+    function zip(files){
+      const parts=[], cen=[]; let off=0;
+      for(const f of files){
+        const nm=enc.encode(f.name), d=enc.encode(f.text), crc=crc32(d);
+        const h=new DataView(new ArrayBuffer(30));
+        h.setUint32(0,0x04034b50,true); h.setUint16(4,20,true); h.setUint16(6,0x0800,true); h.setUint16(12,0x21,true);
+        h.setUint32(14,crc,true); h.setUint32(18,d.length,true); h.setUint32(22,d.length,true); h.setUint16(26,nm.length,true);
+        parts.push(new Uint8Array(h.buffer), nm, d);
+        const c=new DataView(new ArrayBuffer(46));
+        c.setUint32(0,0x02014b50,true); c.setUint16(4,20,true); c.setUint16(6,20,true); c.setUint16(8,0x0800,true); c.setUint16(14,0x21,true);
+        c.setUint32(16,crc,true); c.setUint32(20,d.length,true); c.setUint32(24,d.length,true); c.setUint16(28,nm.length,true); c.setUint32(42,off,true);
+        cen.push(new Uint8Array(c.buffer), nm);
+        off+=30+nm.length+d.length;
+      }
+      const cs=cen.reduce((a,b)=>a+b.length,0), e=new DataView(new ArrayBuffer(22));
+      e.setUint32(0,0x06054b50,true); e.setUint16(8,files.length,true); e.setUint16(10,files.length,true); e.setUint32(12,cs,true); e.setUint32(16,off,true);
+      return new Blob([...parts,...cen,new Uint8Array(e.buffer)],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    }
+    const esc=v=>String(v).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    const colName=i=>{ let s=""; i++; while(i){ const m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=Math.floor((i-1)/26); } return s; };
+    const M='xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+    const R='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+    function sheetXml(sh){
+      const cols=sh.widths?`<cols>${sh.widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join("")}</cols>`:"";
+      const view=sh.header?'<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>':'<sheetViews><sheetView workbookViewId="0"/></sheetViews>';
+      const rows=sh.rows.map((r,ri)=>`<row r="${ri+1}">${r.map((v,ci)=>(v===""||v==null)?"":`<c r="${colName(ci)}${ri+1}" t="inlineStr"${sh.header&&ri===0?' s="1"':""}><is><t xml:space="preserve">${esc(v)}</t></is></c>`).join("")}</row>`).join("");
+      return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet ${M}>${view}${cols}<sheetData>${rows}</sheetData></worksheet>`;
+    }
+    function make(sheets){
+      const files=[
+        {name:"[Content_Types].xml", text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}</Types>`},
+        {name:"_rels/.rels", text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${R}/officeDocument" Target="xl/workbook.xml"/></Relationships>`},
+        {name:"xl/workbook.xml", text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook ${M} xmlns:r="${R}"><sheets>${sheets.map((sh,i)=>`<sheet name="${esc(sh.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join("")}</sheets></workbook>`},
+        {name:"xl/_rels/workbook.xml.rels", text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_,i)=>`<Relationship Id="rId${i+1}" Type="${R}/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join("")}<Relationship Id="rId${sheets.length+1}" Type="${R}/styles" Target="styles.xml"/></Relationships>`},
+        {name:"xl/styles.xml", text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet ${M}><fonts count="2"><font><sz val="11"/><name val="맑은 고딕"/></font><font><b/><sz val="11"/><name val="맑은 고딕"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE9EDF3"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`},
+        ...sheets.map((sh,i)=>({name:`xl/worksheets/sheet${i+1}.xml`, text:sheetXml(sh)}))
+      ];
+      return zip(files);
+    }
+    // ----- 읽기 -----
+    function entries(buf){
+      const u=new Uint8Array(buf), dv=new DataView(buf); let e=-1;
+      for(let i=u.length-22;i>=Math.max(0,u.length-65557);i--){ if(dv.getUint32(i,true)===0x06054b50){ e=i; break; } }
+      if(e<0) throw new Error("notzip");
+      const n=dv.getUint16(e+10,true); let p=dv.getUint32(e+16,true); const out={}, dec=new TextDecoder();
+      for(let k=0;k<n;k++){
+        const method=dv.getUint16(p+10,true), csize=dv.getUint32(p+20,true), nl=dv.getUint16(p+28,true), xl=dv.getUint16(p+30,true), cl=dv.getUint16(p+32,true), lho=dv.getUint32(p+42,true);
+        const name=dec.decode(u.subarray(p+46,p+46+nl)), start=lho+30+dv.getUint16(lho+26,true)+dv.getUint16(lho+28,true);
+        out[name]={method, data:u.subarray(start,start+csize)}; p+=46+nl+xl+cl;
+      }
+      return out;
+    }
+    async function inflate(en){
+      if(en.method===0) return en.data;
+      if(en.method!==8 || typeof DecompressionStream==="undefined") throw new Error("unsupported");
+      const st=new Blob([en.data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      return new Uint8Array(await new Response(st).arrayBuffer());
+    }
+    const tags=(doc,t)=>[...doc.getElementsByTagNameNS("*",t)];
+    async function read(buf){
+      const z=entries(buf), dec=new TextDecoder(), P=x=>new DOMParser().parseFromString(x,"application/xml");
+      const txt=async n=>{ const k=Object.keys(z).find(x=>x.toLowerCase()===n.toLowerCase()); return k? dec.decode(await inflate(z[k])) : null; };
+      let path="xl/worksheets/sheet1.xml";
+      const wb=await txt("xl/workbook.xml"), rl=await txt("xl/_rels/workbook.xml.rels");
+      if(wb && rl){
+        const first=tags(P(wb),"sheet")[0];
+        const rid=first && (first.getAttributeNS(R,"id") || first.getAttribute("r:id"));
+        const rel=rid && tags(P(rl),"Relationship").find(r=>r.getAttribute("Id")===rid);
+        if(rel){ const t=rel.getAttribute("Target").replace(/^\//,""); path=t.startsWith("xl/")?t:"xl/"+t; }
+      }
+      const ss=[]; const sst=await txt("xl/sharedStrings.xml");
+      if(sst) tags(P(sst),"si").forEach(si=>ss.push(tags(si,"t").map(t=>t.textContent).join("")));
+      const sx=await txt(path); if(!sx) throw new Error("nosheet");
+      return tags(P(sx),"row").map(r=>{
+        const arr=[];
+        tags(r,"c").forEach(c=>{
+          const L=((c.getAttribute("r")||"").match(/^[A-Z]+/)||[""])[0];
+          const ci=L ? L.split("").reduce((a,ch)=>a*26+ch.charCodeAt(0)-64,0)-1 : arr.length;
+          const t=c.getAttribute("t"), v=tags(c,"v")[0];
+          arr[ci] = t==="s" ? (v?ss[+v.textContent]||"":"") : t==="inlineStr" ? tags(c,"t").map(x=>x.textContent).join("") : (v?v.textContent:"");
+        });
+        return Array.from(arr,x=>String(x||"").trim());
+      });
+    }
+    function readCsv(buf){
+      let text=new TextDecoder("utf-8").decode(buf);
+      if(text.includes("\uFFFD")){ try{ text=new TextDecoder("euc-kr").decode(buf); }catch(_){} }
+      text=text.replace(/^\uFEFF/,"");
+      const rows=[]; let row=[], cur="", q=false;
+      for(let i=0;i<text.length;i++){
+        const ch=text[i];
+        if(q){ if(ch==='"'){ if(text[i+1]==='"'){ cur+='"'; i++; } else q=false; } else cur+=ch; }
+        else if(ch==='"') q=true;
+        else if(ch===','){ row.push(cur.trim()); cur=""; }
+        else if(ch==='\n'||ch==='\r'){ if(ch==='\r'&&text[i+1]==='\n') i++; row.push(cur.trim()); rows.push(row); row=[]; cur=""; }
+        else cur+=ch;
+      }
+      if(cur||row.length){ row.push(cur.trim()); rows.push(row); }
+      return rows;
+    }
+    return {make, read, readCsv};
+  })();
+
+  // 엑셀 행 → 명단 (머리글 '부서'·'성명'을 찾고, 없으면 A열 부서·B열 성명)
+  function rowsToRoster(rows){
+    let hi=-1, dc=-1, nc=1;
+    for(let i=0;i<Math.min(rows.length,5);i++){
+      const r=(rows[i]||[]).map(x=>String(x||"").replace(/\s/g,""));
+      const n=r.findIndex(x=>/^(성명|이름|교사명|교직원명|성함)$/.test(x));
+      if(n>=0){ hi=i; nc=n; dc=r.findIndex(x=>/^(부서|소속|부서명|학년부|업무부서)$/.test(x)); break; }
+    }
+    if(hi<0) dc=0;
+    const out=[];
+    rows.slice(hi+1).forEach(r=>{
+      r=r||[]; let dept=dc>=0?String(r[dc]||"").trim():"", name=String(r[nc]||"").trim();
+      if(hi<0 && !name && dept && r.filter(Boolean).length===1){ name=dept; dept=""; }
+      if(!name) return;
+      name.split(/[\s,，·、\/]+/).filter(Boolean).forEach(n=>out.push({dept,name:n}));
+    });
+    const order=[]; out.forEach(p=>{ if(!order.includes(p.dept)) order.push(p.dept); });
+    return order.flatMap(d=>out.filter(p=>p.dept===d));
+  }
+  function rosterToText(list){
+    const depts=[...new Set(list.map(p=>p.dept))];
+    return depts.map(d=>{ const names=list.filter(p=>p.dept===d).map(p=>p.name).join(" "); return d?`${d}: ${names}`:names; }).join("\n");
+  }
+  async function saveXlsx(filename, sheets){
+    if(!downloads){ toast("이 화면에서는 파일 저장을 쓸 수 없습니다."); return; }
+    try{ await downloads.save({filename, data:XL.make(sheets)}); toast(`${filename} 파일을 저장했습니다.`); }
+    catch(e){ if(e&&e.code==="declined"){} else toast("엑셀 파일을 만들지 못했습니다. 잠시 후 다시 시도해 주세요."); }
+  }
+  const GUIDE_SHEET={name:"작성 방법", widths:[90], rows:[
+    ["교직원 연수 등록부 · 명단 엑셀 작성 방법"],[""],
+    ["1. '명단' 시트의 1행 제목(부서, 성명)은 지우지 마세요."],
+    ["2. 2행부터 한 줄에 한 사람씩, A열에 부서, B열에 성명을 적습니다."],
+    ["3. 부서가 없으면 A열을 비워 두세요."],
+    ["4. 다 적으면 저장합니다 (파일 형식: Excel 통합 문서 .xlsx)."],
+    ["5. 등록부에서 관리자 모드 → 명단 편집 → [엑셀 올리기]로 이 파일을 고릅니다."],
+    ["6. 미리보기를 확인하고 [명단 저장]을 눌러야 실제 명단에 반영됩니다."],[""],
+    ["예시)  교무부 | 김민준"],["        교무부 | 이서연"],["        연구부 | 박지호"]]};
+  $("btn-xl-down").addEventListener("click",()=>{
+    const list=parseRoster($("in-roster").value);
+    const src=list.length?list:state.roster;
+    if(!src.length){ toast("명단이 비어 있습니다. [빈 양식 받기]로 양식을 받아 작성해 주세요."); return; }
+    const d=new Date(), ymd=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+    saveXlsx(`연수등록부_명단_${ymd}.xlsx`, [{name:"명단", header:true, widths:[18,16], rows:[["부서","성명"], ...src.map(p=>[p.dept||"", p.name])]}, GUIDE_SHEET]);
+  });
+  $("btn-xl-tpl").addEventListener("click",()=>{
+    saveXlsx("연수등록부_명단_양식.xlsx", [{name:"명단", header:true, widths:[18,16], rows:[["부서","성명"]]}, GUIDE_SHEET]);
+  });
+  $("btn-xl-up").addEventListener("click",()=>{ $("in-xl").value=""; $("in-xl").click(); });
+  $("in-xl").addEventListener("change",async()=>{
+    const f=$("in-xl").files && $("in-xl").files[0]; if(!f) return;
+    const name=f.name.toLowerCase();
+    if(name.endsWith(".xls")){ toast("예전 엑셀(.xls) 파일은 읽을 수 없습니다. 엑셀에서 '다른 이름으로 저장' → 'Excel 통합 문서(.xlsx)'로 저장해 올려 주세요."); return; }
+    try{
+      const buf=await f.arrayBuffer();
+      const rows=name.endsWith(".csv") ? XL.readCsv(buf) : await XL.read(buf);
+      const list=rowsToRoster(rows);
+      if(!list.length){ toast("명단을 찾지 못했습니다. A열 부서, B열 성명 형식인지 확인해 주세요."); return; }
+      $("in-roster").value=rosterToText(list); renderPreview();
+      toast(`엑셀에서 ${list.length}명을 불러왔습니다. 미리보기를 확인하고 [명단 저장]을 눌러야 반영됩니다.`);
+    }catch(e){ toast("엑셀 파일을 읽지 못했습니다. .xlsx 파일인지 확인해 주세요."); }
+  });
+
   function renderPreview(){
     const box=$("roster-preview"); box.textContent="";
     const list=parseRoster($("in-roster").value);
